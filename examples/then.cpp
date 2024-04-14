@@ -18,7 +18,12 @@
 #include <stdexec/execution.hpp>
 #include "./algorithms/then.hpp"
 
+#include <stdexec/execution.hpp>
+
+#include "exec/static_thread_pool.hpp"
+
 #include <cstdio>
+
 
 ///////////////////////////////////////////////////////////////////////////////
 // Example code:
@@ -30,6 +35,21 @@ int main() {
 
   // prints:
   //   Got: 42
-  auto [a] = stdexec::sync_wait(std::move(x)).value();
-  (void) a;
+  [[maybe_unused]] auto [a] = stdexec::sync_wait(std::move(x)).value();
+//   (void) a;
+    int const nthreads = 4;
+
+    printf("threads: %d\n", nthreads);
+
+    exec::static_thread_pool pool (nthreads);
+
+    auto task = stdexec::schedule(pool.get_scheduler()) 
+              | stdexec::bulk(nthreads, [](auto id){ 
+                    printf("hello from thread %d\n",id);
+                })
+				| stdexec::bulk(nthreads, [](auto id) {
+					printf("wow...\n");
+				});
+
+    stdexec::sync_wait(std::move(task)).value();
 }

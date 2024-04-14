@@ -30,17 +30,17 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS::_submit {
     struct receiver_t : stream_receiver_base {
       op_state_t* op_state_;
 
-      template <__completion_tag Tag, class... As>
-        requires __callable<Tag, Receiver, As...>
+      template < __completion_tag Tag, class... As>
+        requires std::is_invocable_v<Tag, Receiver, As...>
       friend void tag_invoke(Tag, receiver_t&& self, As&&... as) //
         noexcept(__nothrow_callable<Tag, Receiver, As...>) {
         // Delete the state as cleanup:
         std::unique_ptr<op_state_t> g{self.op_state_};
-        return Tag()(static_cast<Receiver&&>(self.op_state_->rcvr_), static_cast<As&&>(as)...);
+        return Tag()((Receiver&&) self.op_state_->rcvr_, (As&&) as...);
       }
 
       // Forward all receiever queries.
-      STDEXEC_MEMFN_DECL(auto get_env)(this const receiver_t& self) noexcept -> env_of_t<Receiver> {
+      friend auto tag_invoke(get_env_t, const receiver_t& self) noexcept -> env_of_t<Receiver> {
         return get_env(self.op_state_->rcvr_);
       }
     };
@@ -50,8 +50,8 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS::_submit {
 
     template <__decays_to<Receiver> CvrefReceiver>
     op_state_t(Sender&& sndr, CvrefReceiver&& rcvr)
-      : rcvr_(static_cast<CvrefReceiver&&>(rcvr))
-      , op_state_(connect(static_cast<Sender&&>(sndr), receiver_t{{}, this})) {
+      : rcvr_((CvrefReceiver&&) rcvr)
+      , op_state_(connect((Sender&&) sndr, receiver_t{{}, this})) {
     }
   };
 
@@ -59,9 +59,9 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS::_submit {
     template <receiver Receiver, sender_to<Receiver> Sender>
     void operator()(Sender&& sndr, Receiver&& rcvr) const noexcept(false) {
       start((new op_state_t<stdexec::__id<Sender>, stdexec::__id<__decay_t<Receiver>>>{
-               static_cast<Sender&&>(sndr), static_cast<Receiver&&>(rcvr)})
+               (Sender&&) sndr, (Receiver&&) rcvr})
               ->op_state_);
     }
   };
 
-} // namespace nvexec::STDEXEC_STREAM_DETAIL_NS::_submit
+}

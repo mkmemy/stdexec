@@ -19,89 +19,86 @@
 
 namespace ex = stdexec;
 
-namespace {
+enum class scope_t {
+  free_standing,
+  scheduler
+};
 
-  enum class scope_t {
-    free_standing,
-    scheduler
+template <scope_t Scope>
+struct cpo_t {
+  using is_sender = void;
+  constexpr static scope_t scope = Scope;
+
+  using completion_signatures = ex::completion_signatures< //
+    ex::set_value_t(),                                     //
+    ex::set_error_t(std::exception_ptr),                   //
+    ex::set_stopped_t()>;
+
+  friend empty_env tag_invoke(ex::get_env_t, const cpo_t&) noexcept {
+    return {};
+  }
+};
+
+template <class CPO>
+struct free_standing_sender_t {
+  using is_sender = void;
+  using __id = free_standing_sender_t;
+  using __t = free_standing_sender_t;
+  using completion_signatures = ex::completion_signatures< //
+    ex::set_value_t(),                                     //
+    ex::set_error_t(std::exception_ptr),                   //
+    ex::set_stopped_t()>;
+
+  template <class... Ts>
+  friend auto tag_invoke(CPO, const free_standing_sender_t& self, Ts&&...) noexcept {
+    return cpo_t<scope_t::free_standing>{};
+  }
+
+  friend empty_env tag_invoke(ex::get_env_t, const free_standing_sender_t&) noexcept {
+    return {};
+  }
+};
+
+template <class CPO, class... CompletionSignals>
+struct scheduler_t {
+  using __id = scheduler_t;
+  using __t = scheduler_t;
+
+  struct env_t {
+    template <stdexec::__one_of<ex::set_value_t, CompletionSignals...> Tag>
+    friend scheduler_t tag_invoke(ex::get_completion_scheduler_t<Tag>, const env_t&) noexcept {
+      return {};
+    }
   };
 
-  template <scope_t Scope>
-  struct cpo_t {
-    using sender_concept = stdexec::sender_t;
-    constexpr static scope_t scope = Scope;
-
+  struct sender_t {
+    using is_sender = void;
+    using __id = sender_t;
+    using __t = sender_t;
     using completion_signatures = ex::completion_signatures< //
       ex::set_value_t(),                                     //
       ex::set_error_t(std::exception_ptr),                   //
       ex::set_stopped_t()>;
 
-    friend empty_env tag_invoke(ex::get_env_t, const cpo_t&) noexcept {
+    friend env_t tag_invoke(ex::get_env_t, const sender_t&) noexcept {
       return {};
     }
   };
 
-  template <class CPO>
-  struct free_standing_sender_t {
-    using sender_concept = stdexec::sender_t;
-    using __id = free_standing_sender_t;
-    using __t = free_standing_sender_t;
-    using completion_signatures = ex::completion_signatures< //
-      ex::set_value_t(),                                     //
-      ex::set_error_t(std::exception_ptr),                   //
-      ex::set_stopped_t()>;
+  template <class... Ts>
+  friend auto tag_invoke(CPO, const scheduler_t&, Ts&&...) noexcept {
+    return cpo_t<scope_t::scheduler>{};
+  }
 
-    template <class... Ts>
-    friend auto tag_invoke(CPO, const free_standing_sender_t& self, Ts&&...) noexcept {
-      return cpo_t<scope_t::free_standing>{};
-    }
+  friend sender_t tag_invoke(ex::schedule_t, scheduler_t) {
+    return sender_t{};
+  }
 
-    friend empty_env tag_invoke(ex::get_env_t, const free_standing_sender_t&) noexcept {
-      return {};
-    }
-  };
+  friend bool operator==(scheduler_t, scheduler_t) noexcept {
+    return true;
+  }
 
-  template <class CPO, class... CompletionSignals>
-  struct scheduler_t {
-    using __id = scheduler_t;
-    using __t = scheduler_t;
-
-    struct env_t {
-      template <stdexec::__one_of<ex::set_value_t, CompletionSignals...> Tag>
-      friend scheduler_t tag_invoke(ex::get_completion_scheduler_t<Tag>, const env_t&) noexcept {
-        return {};
-      }
-    };
-
-    struct sender_t {
-      using sender_concept = stdexec::sender_t;
-      using __id = sender_t;
-      using __t = sender_t;
-      using completion_signatures = ex::completion_signatures< //
-        ex::set_value_t(),                                     //
-        ex::set_error_t(std::exception_ptr),                   //
-        ex::set_stopped_t()>;
-
-      friend env_t tag_invoke(ex::get_env_t, const sender_t&) noexcept {
-        return {};
-      }
-    };
-
-    template <class... Ts>
-    friend auto tag_invoke(CPO, const scheduler_t&, Ts&&...) noexcept {
-      return cpo_t<scope_t::scheduler>{};
-    }
-
-    friend sender_t tag_invoke(ex::schedule_t, scheduler_t) {
-      return sender_t{};
-    }
-
-    friend bool operator==(scheduler_t, scheduler_t) noexcept {
-      return true;
-    }
-
-    friend bool operator!=(scheduler_t, scheduler_t) noexcept {
-      return false;
-    }
-  };
-} // namespace
+  friend bool operator!=(scheduler_t, scheduler_t) noexcept {
+    return false;
+  }
+};

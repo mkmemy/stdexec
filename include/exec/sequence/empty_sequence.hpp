@@ -16,8 +16,6 @@
  */
 #pragma once
 
-#include "../../stdexec/concepts.hpp"
-#include "../../stdexec/execution.hpp"
 #include "../sequence_senders.hpp"
 
 namespace exec {
@@ -31,10 +29,9 @@ namespace exec {
 
       struct __t {
         using __id = __operation;
-        STDEXEC_ATTRIBUTE((no_unique_address))
-        _Receiver __rcvr_;
+        STDEXEC_NO_UNIQUE_ADDRESS _Receiver __rcvr_;
 
-        STDEXEC_MEMFN_DECL(void start)(this __t& __self) noexcept {
+        friend void tag_invoke(start_t, __t& __self) noexcept {
           stdexec::set_value(static_cast<_Receiver&&>(__self.__rcvr_));
         }
       };
@@ -43,12 +40,12 @@ namespace exec {
     struct __sender {
       struct __t {
         using __id = __sender;
-        using sender_concept = sequence_sender_t;
-        using completion_signatures = stdexec::completion_signatures<stdexec::set_value_t()>;
-        using item_types = exec::item_types<>;
+        using is_sender = sequence_tag;
+        using completion_signatures = stdexec::completion_signatures<>;
 
         template <__decays_to<__t> _Self, receiver_of<completion_signatures> _Rcvr>
-        STDEXEC_MEMFN_DECL(auto subscribe)(this _Self&&, _Rcvr&& __rcvr) noexcept(__nothrow_decay_copyable<_Rcvr>) {
+        friend auto tag_invoke(subscribe_t, _Self&&, _Rcvr&& __rcvr) noexcept(
+          __nothrow_decay_copyable<_Rcvr>) {
           return stdexec::__t<__operation<stdexec::__id<__decay_t<_Rcvr>>>>{
             static_cast<_Rcvr&&>(__rcvr)};
         }
@@ -56,7 +53,7 @@ namespace exec {
     };
 
     struct empty_sequence_t {
-      auto operator()() const noexcept -> __t<__sender> {
+      __t<__sender> operator()() const noexcept {
         return {};
       }
     };

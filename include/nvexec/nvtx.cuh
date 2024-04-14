@@ -22,9 +22,6 @@
 
 #include "stream/common.cuh"
 
-STDEXEC_PRAGMA_PUSH()
-STDEXEC_PRAGMA_IGNORE_GNU("-Wmissing-braces")
-
 namespace nvexec {
 
   namespace STDEXEC_STREAM_DETAIL_NS { namespace nvtx {
@@ -54,10 +51,10 @@ namespace nvexec {
             nvtxRangePop();
           }
 
-          self.op_state_.propagate_completion_signal(tag, static_cast<As&&>(as)...);
+          self.op_state_.propagate_completion_signal(tag, (As&&) as...);
         }
 
-        STDEXEC_MEMFN_DECL(auto get_env)(this const __t& self) noexcept -> Env {
+        friend Env tag_invoke(get_env_t, const __t& self) noexcept {
           return self.op_state_.make_env();
         }
 
@@ -86,11 +83,11 @@ namespace nvexec {
 
         template <__decays_to<__t> Self, receiver Receiver>
           requires receiver_of<Receiver, _completion_signatures_t<Self, env_of_t<Receiver>>>
-        STDEXEC_MEMFN_DECL(auto connect)(this Self&& self, Receiver rcvr)
+        friend auto tag_invoke(connect_t, Self&& self, Receiver rcvr)
           -> stream_op_state_t<__copy_cvref_t<Self, Sender>, receiver_t<Receiver>, Receiver> {
-          return stream_op_state<__copy_cvref_t<Self, Sender>>(
-            static_cast<Self&&>(self).sndr_,
-            static_cast<Receiver&&>(rcvr),
+          return stream_op_state< __copy_cvref_t<Self, Sender>>(
+            ((Self&&) self).sndr_,
+            (Receiver&&) rcvr,
             [&](operation_state_base_t<stdexec::__id<Receiver>>& stream_provider)
               -> receiver_t<Receiver> {
               return receiver_t<Receiver>(stream_provider, std::move(self.name_));
@@ -98,12 +95,12 @@ namespace nvexec {
         }
 
         template <__decays_to<__t> Self, class Env>
-        STDEXEC_MEMFN_DECL(auto get_completion_signatures)(this Self&&, Env&&)
+        friend auto tag_invoke(get_completion_signatures_t, Self&&, Env&&)
           -> _completion_signatures_t<Self, Env> {
           return {};
         }
 
-        STDEXEC_MEMFN_DECL(auto get_env)(this const __t& self) noexcept -> env_of_t<const Sender&> {
+        friend auto tag_invoke(get_env_t, const __t& self) noexcept -> env_of_t<const Sender&> {
           return get_env(self.sndr_);
         }
       };
@@ -116,24 +113,22 @@ namespace nvexec {
     struct push_t {
       template <stdexec::sender Sender>
       nvtx_sender_th<kind::push, Sender> operator()(Sender&& sndr, std::string&& name) const {
-        return nvtx_sender_th<kind::push, Sender>{{}, static_cast<Sender&&>(sndr), std::move(name)};
+        return nvtx_sender_th<kind::push, Sender>{{}, (Sender&&) sndr, std::move(name)};
       }
 
-      STDEXEC_ATTRIBUTE((always_inline))
-      auto operator()(std::string name) const -> stdexec::__binder_back<push_t, std::string> {
-        return {std::move(name)};
+      stdexec::__binder_back<push_t, std::string> operator()(std::string name) const {
+        return {{}, {}, std::move(name)};
       }
     };
 
     struct pop_t {
       template <stdexec::sender Sender>
       nvtx_sender_th<kind::pop, Sender> operator()(Sender&& sndr) const {
-        return nvtx_sender_th<kind::pop, Sender>{{}, static_cast<Sender&&>(sndr), {}};
+        return nvtx_sender_th<kind::pop, Sender>{{}, (Sender&&) sndr, {}};
       }
 
-      STDEXEC_ATTRIBUTE((always_inline))
-      auto operator()() const noexcept -> stdexec::__binder_back<pop_t> {
-        return {};
+      stdexec::__binder_back<pop_t> operator()() const {
+        return {{}, {}};
       }
     };
 
@@ -143,27 +138,28 @@ namespace nvexec {
     struct scoped_t {
       template <stdexec::sender Sender, stdexec::__sender_adaptor_closure Closure>
       auto operator()(Sender&& __sndr, std::string&& name, Closure closure) const noexcept {
-        return static_cast<Sender&&>(__sndr) | push(std::move(name)) | closure | pop();
+        return (Sender&&) __sndr | push(std::move(name)) | closure | pop();
       }
 
       template <stdexec::__sender_adaptor_closure Closure>
-      STDEXEC_ATTRIBUTE((always_inline))
       auto operator()(std::string name, Closure closure) const
         -> stdexec::__binder_back<scoped_t, std::string, Closure> {
-        return {{std::move(name), static_cast<Closure&&>(closure)}};
+        return {
+          {},
+          {},
+          {std::move(name), (Closure&&) closure}
+        };
       }
     };
 
     inline constexpr scoped_t scoped{};
 
-  }} // namespace STDEXEC_STREAM_DETAIL_NS::nvtx
+  }} // STDEXEC_STREAM_DETAIL_NS
 
   namespace nvtx {
-    using STDEXEC_STREAM_DETAIL_NS::nvtx::push;
-    using STDEXEC_STREAM_DETAIL_NS::nvtx::pop;
-    using STDEXEC_STREAM_DETAIL_NS::nvtx::scoped;
-  } // namespace nvtx
+  using STDEXEC_STREAM_DETAIL_NS::nvtx::push;
+  using STDEXEC_STREAM_DETAIL_NS::nvtx::pop;
+  using STDEXEC_STREAM_DETAIL_NS::nvtx::scoped;
+  }
 
 } // namespace nvexec
-
-STDEXEC_PRAGMA_POP()

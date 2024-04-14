@@ -38,28 +38,26 @@ namespace exec {
       template <class _Receiver>
       struct __receiver_id {
         struct __t {
-          using receiver_concept = stdexec::receiver_t;
+          using is_receiver = void;
           using __id = __receiver_id;
           _Receiver __receiver_;
 
           template <__one_of<set_value_t, set_error_t> _Tag, __decays_to<__t> _Self, class... _Args>
-            requires __callable<_Tag, _Receiver, _Args...>
+            requires std::is_invocable_v<_Tag, _Receiver, _Args...>
           friend void tag_invoke(_Tag, _Self&& __self, _Args&&... __args) noexcept {
-            _Tag{}(static_cast<_Receiver&&>(__self.__receiver_), static_cast<_Args&&>(__args)...);
+            _Tag{}((_Receiver&&) __self.__receiver_, (_Args&&) __args...);
           }
 
           template <same_as<set_stopped_t> _Tag>
-          [[noreturn]]
-          friend void tag_invoke(_Tag, __t&&) noexcept {
+          [[noreturn]] friend void tag_invoke(_Tag, __t&&) noexcept {
             std::terminate();
           }
 
-          STDEXEC_MEMFN_DECL(auto get_env)(this const __t& __self) noexcept -> env_of_t<_Receiver> {
+          friend env_of_t<_Receiver> tag_invoke(get_env_t, const __t& __self) noexcept {
             return get_env(__self.__receiver_);
           }
         };
       };
-
       template <class _Rec>
       using __receiver = __t<__receiver_id<_Rec>>;
 
@@ -73,26 +71,25 @@ namespace exec {
 
         struct __t {
           using __id = __sender_id;
-          using sender_concept = stdexec::sender_t;
+          using is_sender = void;
 
           _Sender __sender_;
 
           template <receiver _Receiver>
             requires sender_to<_Sender, __receiver<_Receiver>>
-          STDEXEC_MEMFN_DECL(
-            auto connect)(this __t&& __self, _Receiver&& __rcvr) noexcept
-            -> connect_result_t<_Sender, __receiver<_Receiver>> {
+          friend connect_result_t<_Sender, __receiver<_Receiver>>
+            tag_invoke(connect_t, __t&& __self, _Receiver&& __rcvr) noexcept {
             return stdexec::connect(
-              static_cast<_Sender&&>(__self.__sender_),
-              __receiver<_Receiver>{static_cast<_Receiver&&>(__rcvr)});
+              (_Sender&&) __self.__sender_, __receiver<_Receiver>{(_Receiver&&) __rcvr});
           }
 
           template <__decays_to<__t> _Self, class _Env>
-          STDEXEC_MEMFN_DECL(auto get_completion_signatures)(this _Self&&, _Env&&) -> __completion_signatures<_Env> {
+          friend auto tag_invoke(get_completion_signatures_t, _Self&&, _Env&&)
+            -> __completion_signatures<_Env> {
             return {};
           }
 
-          STDEXEC_MEMFN_DECL(auto get_env)(this const __t& __self) noexcept -> env_of_t<_Sender> {
+          friend env_of_t<_Sender> tag_invoke(get_env_t, const __t& __self) noexcept {
             return get_env(__self.__sender_);
           }
         };
@@ -100,15 +97,15 @@ namespace exec {
       template <class _Sender>
       using __sender = __t<__sender_id<__decay_t<_Sender>>>;
 
-      template <sender _Sender>
-      auto operator()(_Sender&& __sndr) const noexcept(__nothrow_decay_copyable<_Sender>)
-        -> __sender<_Sender> {
-        return __sender<_Sender>{static_cast<_Sender&&>(__sndr)};
+      template <typename _Sender, typename = std::enable_if_t<sender<_Sender>>>
+      __sender<_Sender> operator()(_Sender&& __sndr) const
+        noexcept(__nothrow_decay_copyable<_Sender>) {
+        return __sender<_Sender>{(_Sender&&) __sndr};
       }
 
       template <class _Value>
-      auto operator()(_Value&& __value) const noexcept -> _Value&& {
-        return static_cast<_Value&&>(__value);
+      _Value&& operator()(_Value&& __value) const noexcept {
+        return (_Value&&) __value;
       }
     };
 
@@ -135,35 +132,36 @@ namespace exec {
         : __coro_(std::exchange(__that.__coro_, {})) {
       }
 
-      [[nodiscard]]
-      auto await_ready() const noexcept -> bool {
+      bool await_ready() const noexcept {
         return false;
       }
 
       template <__has_continuation _Promise>
-      auto await_suspend(__coro::coroutine_handle<_Promise> __parent) noexcept -> bool {
+      bool await_suspend(__coro::coroutine_handle<_Promise> __parent) noexcept {
         __coro_.promise().__scheduler_ = get_scheduler(get_env(__parent.promise()));
         __coro_.promise().set_continuation(__parent.promise().continuation());
         __parent.promise().set_continuation(__coro_);
         return false;
       }
 
-      auto await_resume() noexcept -> std::tuple<_Ts&...> {
+      std::tuple<_Ts&...> await_resume() noexcept {
         return std::exchange(__coro_, {}).promise().__args_;
       }
 
      private:
       struct __final_awaitable {
-        static constexpr auto await_ready() noexcept -> bool {
+        static constexpr bool await_ready() noexcept {
           return false;
         }
 
-        static auto await_suspend(__coro::coroutine_handle<__promise> __h) noexcept
-          -> __coro::coroutine_handle<> {
+        static __coro::coroutine_handle<>
+          await_suspend(__coro::coroutine_handle<__promise> __h) noexcept {
           __promise& __p = __h.promise();
-          auto __coro = __p.__is_unhandled_stopped_ ? __p.continuation().unhandled_stopped()
-                                                    : __p.continuation().handle();
-          return STDEXEC_DESTROY_AND_CONTINUE(__h, __coro);
+          auto __coro = __p.__is_unhandled_stopped_
+                        ? __p.continuation().unhandled_stopped()
+                        : __p.continuation().handle();
+          __h.destroy();
+          return __coro;
         }
 
         void await_resume() const noexcept {
@@ -173,7 +171,7 @@ namespace exec {
       struct __env {
         const __promise& __promise_;
 
-        STDEXEC_MEMFN_DECL(auto query)(this __env __self, get_scheduler_t) noexcept -> __any_scheduler {
+        friend __any_scheduler tag_invoke(get_scheduler_t, __env __self) noexcept {
           return __self.__promise_.__scheduler_;
         }
       };
@@ -184,37 +182,36 @@ namespace exec {
           : __args_{__ts...} {
         }
 
-        auto initial_suspend() noexcept -> __coro::suspend_always {
+        __coro::suspend_always initial_suspend() noexcept {
           return {};
         }
 
-        auto final_suspend() noexcept -> __final_awaitable {
+        __final_awaitable final_suspend() noexcept {
           return {};
         }
 
         void return_void() noexcept {
         }
 
-        [[noreturn]]
-        void unhandled_exception() noexcept {
+        [[noreturn]] void unhandled_exception() noexcept {
           std::terminate();
         }
 
-        auto unhandled_stopped() noexcept -> __coro::coroutine_handle<__promise> {
+        __coro::coroutine_handle<__promise> unhandled_stopped() noexcept {
           __is_unhandled_stopped_ = true;
           return __coro::coroutine_handle<__promise>::from_promise(*this);
         }
 
-        auto get_return_object() noexcept -> __task {
+        __task get_return_object() noexcept {
           return __task(__coro::coroutine_handle<__promise>::from_promise(*this));
         }
 
         template <class _Awaitable>
-        auto await_transform(_Awaitable&& __awaitable) noexcept -> decltype(auto) {
-          return as_awaitable(__die_on_stop(static_cast<_Awaitable&&>(__awaitable)), *this);
+        decltype(auto) await_transform(_Awaitable&& __awaitable) noexcept {
+          return as_awaitable(__die_on_stop((_Awaitable&&) __awaitable), *this);
         }
 
-        STDEXEC_MEMFN_DECL(auto get_env)(this const __promise& __self) noexcept -> __env {
+        friend __env tag_invoke(get_env_t, const __promise& __self) noexcept {
           return {__self};
         }
 
@@ -229,15 +226,15 @@ namespace exec {
     struct __at_coro_exit_t {
      private:
       template <class _Action, class... _Ts>
-      static auto __impl(_Action __action, _Ts... __ts) -> __task<_Ts...> {
-        co_await static_cast<_Action&&>(__action)(static_cast<_Ts&&>(__ts)...);
+      static __task<_Ts...> __impl(_Action __action, _Ts... __ts) {
+        co_await ((_Action&&) __action)((_Ts&&) __ts...);
       }
 
      public:
       template <class _Action, class... _Ts>
-        requires __callable<__decay_t<_Action>, __decay_t<_Ts>...>
-      auto operator()(_Action&& __action, _Ts&&... __ts) const -> __task<_Ts...> {
-        return __impl(static_cast<_Action&&>(__action), static_cast<_Ts&&>(__ts)...);
+        requires std::is_invocable_v<__decay_t<_Action>, __decay_t<_Ts>...>
+      __task<_Ts...> operator()(_Action&& __action, _Ts&&... __ts) const {
+        return __impl((_Action&&) __action, (_Ts&&) __ts...);
       }
     };
   } // namespace __at_coro_exit

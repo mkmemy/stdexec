@@ -106,54 +106,47 @@ namespace nvexec {
     };
 
     template <class VisitorT, class V>
-    STDEXEC_ATTRIBUTE((host, device))
-    void visit_impl(
+    STDEXEC_DETAIL_CUDACC_HOST_DEVICE void visit_impl(
       std::integral_constant<std::size_t, 0>,
       VisitorT&& visitor,
       V&& v,
       std::size_t index) {
       if (0 == index) {
-        static_cast<VisitorT&&>(visitor)((static_cast<V&&>(v)).template get<0>());
+        ((VisitorT&&) visitor)(((V&&) v).template get<0>());
       }
     }
 
     template <std::size_t I, class VisitorT, class V>
-    STDEXEC_ATTRIBUTE((host, device))
-    void visit_impl(
+    STDEXEC_DETAIL_CUDACC_HOST_DEVICE void visit_impl(
       std::integral_constant<std::size_t, I>,
       VisitorT&& visitor,
       V&& v,
       std::size_t index) {
       if (I == index) {
-        static_cast<VisitorT&&>(visitor)((static_cast<V&&>(v)).template get<I>());
+        ((VisitorT&&) visitor)(((V&&) v).template get<I>());
         return;
       }
 
       visit_impl(
-        std::integral_constant<std::size_t, I - 1>{},
-        static_cast<VisitorT&&>(visitor),
-        static_cast<V&&>(v),
-        index);
+        std::integral_constant<std::size_t, I - 1>{}, (VisitorT&&) visitor, (V&&) v, index);
     }
-  } // namespace detail
+  }
 
   template <class VisitorT, class V>
-  STDEXEC_ATTRIBUTE((host, device))
-  void visit(VisitorT&& visitor, V&& v) {
+  STDEXEC_DETAIL_CUDACC_HOST_DEVICE void visit(VisitorT&& visitor, V&& v) {
     detail::visit_impl(
       std::integral_constant<std::size_t, stdexec::__decay_t<V>::size - 1>{},
-      static_cast<VisitorT&&>(visitor),
-      static_cast<V&&>(v),
+      (VisitorT&&) visitor,
+      (V&&) v,
       v.index_);
   }
 
   template <class VisitorT, class V>
-  STDEXEC_ATTRIBUTE((host, device))
-  void visit(VisitorT&& visitor, V&& v, std::size_t index) {
+  STDEXEC_DETAIL_CUDACC_HOST_DEVICE void visit(VisitorT&& visitor, V&& v, std::size_t index) {
     detail::visit_impl(
       std::integral_constant<std::size_t, stdexec::__decay_t<V>::size - 1>{},
-      static_cast<VisitorT&&>(visitor),
-      static_cast<V&&>(v),
+      (VisitorT&&) visitor,
+      (V&&) v,
       index);
   }
 
@@ -169,56 +162,46 @@ namespace nvexec {
     using front_t = detail::front<Ts...>;
 
     template <detail::one_of<Ts...> T>
-    using index_of = std::integral_constant<index_t, detail::find_index<index_t, T, Ts...>()>;
+    using index_of = std::integral_constant< index_t, detail::find_index<index_t, T, Ts...>()>;
 
     template <detail::one_of<Ts...> T>
-    STDEXEC_ATTRIBUTE((host, device))
-    T& get() noexcept {
+    STDEXEC_DETAIL_CUDACC_HOST_DEVICE T& get() noexcept {
       void* data = storage_.data_;
       return *static_cast<T*>(data);
     }
 
     template <std::size_t I>
-    STDEXEC_ATTRIBUTE((host, device))
-    detail::nth_type<I, Ts...>& get() noexcept {
+    STDEXEC_DETAIL_CUDACC_HOST_DEVICE detail::nth_type<I, Ts...>& get() noexcept {
       return get<detail::nth_type<I, Ts...>>();
     }
 
-    STDEXEC_ATTRIBUTE((host, device))
-    variant_t()
+    STDEXEC_DETAIL_CUDACC_HOST_DEVICE variant_t()
       requires std::default_initializable<front_t>
     {
       emplace<front_t>();
     }
 
-    STDEXEC_ATTRIBUTE((host, device))
-    ~variant_t() {
+    STDEXEC_DETAIL_CUDACC_HOST_DEVICE ~variant_t() {
       destroy();
     }
 
-    STDEXEC_ATTRIBUTE((host, device))
-
-    bool holds_alternative() const {
+    STDEXEC_DETAIL_CUDACC_HOST_DEVICE bool holds_alternative() const {
       return index_ != detail::npos<index_t>();
     }
 
     template <detail::one_of<Ts...> T, class... As>
-    STDEXEC_ATTRIBUTE((host, device))
-    void emplace(As&&... as) {
+    STDEXEC_DETAIL_CUDACC_HOST_DEVICE void emplace(As&&... as) {
       destroy();
-      construct<T>(static_cast<As&&>(as)...);
+      construct<T>((As&&) as...);
     }
 
     template <detail::one_of<Ts...> T, class... As>
-    STDEXEC_ATTRIBUTE((host, device))
-    void construct(As&&... as) {
-      ::new (storage_.data_) T(static_cast<As&&>(as)...);
+    STDEXEC_DETAIL_CUDACC_HOST_DEVICE void construct(As&&... as) {
+      ::new (storage_.data_) T((As&&) as...);
       index_ = index_of<T>();
     }
 
-    STDEXEC_ATTRIBUTE((host, device))
-
-    void destroy() {
+    STDEXEC_DETAIL_CUDACC_HOST_DEVICE void destroy() {
       if (holds_alternative()) {
         visit(
           [](auto& val) noexcept {
@@ -238,4 +221,4 @@ namespace nvexec {
     union_t storage_;
     index_t index_;
   };
-} // namespace nvexec
+}

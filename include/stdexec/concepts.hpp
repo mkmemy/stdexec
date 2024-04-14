@@ -43,7 +43,10 @@
 namespace stdexec::__std_concepts {
   // Make sure we're using a same_as concept that doesn't instantiate std::is_same
   template <class _Ap, class _Bp>
-  concept same_as = __same_as<_Ap, _Bp> && __same_as<_Bp, _Ap>;
+  concept same_as = std::is_same_v<_Ap, _Bp> && std::is_same_v<_Bp, _Ap>;
+
+  template <class _Ap, class _Bp>
+  inline constexpr bool samee_as = std::is_same_v<_Ap, _Bp> && std::is_same_v<_Bp, _Ap>;
 
 #if STDEXEC_HAS_STD_CONCEPTS_HEADER()
 
@@ -106,6 +109,11 @@ namespace stdexec {
   concept constructible_from = //
     destructible<_Ty> &&       //
     __is_constructible(_Ty, _As...);
+
+	template <typename T, typename... As>
+inline constexpr bool constructible_fromm = 
+	std::is_nothrow_destructible_v<T> &&
+	std::is_constructible_v<T, As...>;
 #else
   template <class _Ty, class... _As>
   concept constructible_from = //
@@ -147,9 +155,9 @@ namespace stdexec {
         swap(static_cast<_Ty&&>(__t), static_cast<_Uy&&>(__u));
       };
 
-    inline constexpr auto const __fn =                             //
-      []<class _Ty, swappable_with<_Ty> _Uy>(_Ty&& __t, _Uy&& __u) //
-      noexcept(noexcept(swap(static_cast<_Ty&&>(__t), static_cast<_Uy&&>(__u)))) {
+    inline constexpr auto const __fn = //
+      []<class _Ty, swappable_with<_Ty> _Uy>(_Ty&& __t, _Uy&& __u) noexcept(
+        noexcept(swap(static_cast<_Ty&&>(__t), static_cast<_Uy&&>(__u)))) {
         swap(static_cast<_Ty&&>(__t), static_cast<_Uy&&>(__u));
       };
   } // namespace __swap

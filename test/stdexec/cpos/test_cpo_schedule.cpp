@@ -20,41 +20,33 @@
 
 namespace ex = stdexec;
 
-STDEXEC_PRAGMA_PUSH()
-STDEXEC_PRAGMA_IGNORE_GNU("-Wunused-function")
+struct my_sender {
+  using is_sender = void;
+  using completion_signatures = ex::completion_signatures< //
+    ex::set_value_t(),                                     //
+    ex::set_error_t(std::exception_ptr),                   //
+    ex::set_stopped_t()>;
 
-namespace {
+  bool from_scheduler_{false};
 
-  struct my_sender {
-    using sender_concept = stdexec::sender_t;
-    using completion_signatures = ex::completion_signatures< //
-      ex::set_value_t(),                                     //
-      ex::set_error_t(std::exception_ptr),                   //
-      ex::set_stopped_t()>;
-
-    bool from_scheduler_{false};
-
-    friend empty_env tag_invoke(ex::get_env_t, const my_sender&) noexcept {
-      return {};
-    }
-  };
-
-  struct my_scheduler {
-    friend my_sender tag_invoke(ex::schedule_t, my_scheduler) {
-      return my_sender{true};
-    }
-  };
-
-  TEST_CASE("can call schedule on an appropriate type", "[cpo][cpo_schedule]") {
-    static_assert(std::invocable<ex::schedule_t, my_scheduler>, "invalid scheduler type");
-    my_scheduler sched;
-    auto snd = ex::schedule(sched);
-    CHECK(snd.from_scheduler_);
+  friend empty_env tag_invoke(ex::get_env_t, const my_sender&) noexcept {
+    return {};
   }
+};
 
-  TEST_CASE("tag types can be deduced from ex::schedule", "[cpo][cpo_schedule]") {
-    static_assert(std::is_same_v<const ex::schedule_t, decltype(ex::schedule)>, "type mismatch");
+struct my_scheduler {
+  friend my_sender tag_invoke(ex::schedule_t, my_scheduler) {
+    return my_sender{true};
   }
-} // namespace
+};
 
-STDEXEC_PRAGMA_POP()
+TEST_CASE("can call schedule on an appropriate type", "[cpo][cpo_schedule]") {
+  static_assert(std::invocable<ex::schedule_t, my_scheduler>, "invalid scheduler type");
+  my_scheduler sched;
+  auto snd = ex::schedule(sched);
+  CHECK(snd.from_scheduler_);
+}
+
+TEST_CASE("tag types can be deduced from ex::schedule", "[cpo][cpo_schedule]") {
+  static_assert(std::is_same_v<const ex::schedule_t, decltype(ex::schedule)>, "type mismatch");
+}

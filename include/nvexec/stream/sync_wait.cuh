@@ -24,20 +24,20 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS { namespace _sync_wait {
   struct __env {
     run_loop::__scheduler __sched_;
 
-    STDEXEC_MEMFN_DECL(auto query)(this const __env& __self, get_scheduler_t) noexcept -> run_loop::__scheduler {
+    friend auto tag_invoke(get_scheduler_t, const __env& __self) noexcept -> run_loop::__scheduler {
       return __self.__sched_;
     }
 
-    STDEXEC_MEMFN_DECL(auto query)(this const __env& __self, get_delegatee_scheduler_t) noexcept
+    friend auto tag_invoke(get_delegatee_scheduler_t, const __env& __self) noexcept
       -> run_loop::__scheduler {
       return __self.__sched_;
     }
   };
- 
+
   // What should sync_wait(just_stopped()) return?
   template <class Sender>
     requires sender_in<Sender, __env>
-  using sync_wait_result_t = value_types_of_t<Sender, __env, __decayed_tuple, __msingle>;
+  using sync_wait_result_t = value_types_of_t< Sender, __env, __decayed_tuple, __msingle>;
 
   template <class SenderId>
   struct state_t;
@@ -55,7 +55,7 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS { namespace _sync_wait {
       template <class Error>
       void set_error(Error err) noexcept {
         if constexpr (__decays_to<Error, cudaError_t>) {
-          state_->data_.template emplace<2>(static_cast<Error&&>(err));
+          state_->data_.template emplace<2>((Error&&) err);
         } else {
           // What is `exception_ptr` but death pending
           state_->data_.template emplace<2>(cudaErrorUnknown);
@@ -75,9 +75,9 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS { namespace _sync_wait {
         }
       }
 
-      template <class Sender2 = Sender, class... As>
+      template <same_as<set_value_t> _Tag, class Sender2 = Sender, class... As>
         requires std::constructible_from<sync_wait_result_t<Sender2>, As...>
-      STDEXEC_MEMFN_DECL(void set_value)(this __t&& rcvr, As&&... as) noexcept {
+      friend void tag_invoke(_Tag, __t&& rcvr, As&&... as) noexcept {
         try {
           int dev_id{};
           cudaStream_t stream = rcvr.state_->stream_;
@@ -90,14 +90,14 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS { namespace _sync_wait {
                   &concurrent_managed_access, cudaDevAttrConcurrentManagedAccess, dev_id))
                 == cudaSuccess) {
                 // Avoid launching the destruction kernel if the memory targeting host
-                (prefetch(static_cast<As&&>(as), stream), ...);
+                (prefetch((As&&) as, stream), ...);
               }
             }
           }
 
           if (cudaError_t status = STDEXEC_DBG_ERR(cudaStreamSynchronize(stream));
               status == cudaSuccess) {
-            rcvr.state_->data_.template emplace<1>(static_cast<As&&>(as)...);
+            rcvr.state_->data_.template emplace<1>((As&&) as...);
           } else {
             rcvr.set_error(status);
           }
@@ -107,27 +107,27 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS { namespace _sync_wait {
         }
       }
 
-      template <class Error>
-      STDEXEC_MEMFN_DECL(void set_error)(this __t&& rcvr, Error err) noexcept {
+      template <same_as<set_error_t> _Tag, class Error>
+      friend void tag_invoke(_Tag, __t&& rcvr, Error err) noexcept {
         if (cudaError_t status = STDEXEC_DBG_ERR(cudaStreamSynchronize(rcvr.state_->stream_));
             status == cudaSuccess) {
-          rcvr.set_error(static_cast<Error&&>(err));
+          rcvr.set_error((Error&&) err);
         } else {
           rcvr.set_error(status);
         }
       }
 
-      STDEXEC_MEMFN_DECL(void set_stopped)(this  __t&& rcvr) noexcept {
+      friend void tag_invoke(set_stopped_t __d, __t&& rcvr) noexcept {
         if (cudaError_t status = STDEXEC_DBG_ERR(cudaStreamSynchronize(rcvr.state_->stream_));
             status == cudaSuccess) {
-          rcvr.state_->data_.template emplace<3>(set_stopped_t());
+          rcvr.state_->data_.template emplace<3>(__d);
         } else {
           rcvr.set_error(status);
         }
         rcvr.loop_->finish();
       }
 
-      STDEXEC_MEMFN_DECL(auto get_env)(this const __t& rcvr) noexcept -> __env {
+      friend __env tag_invoke(get_env_t, const __t& rcvr) noexcept {
         return {rcvr.loop_->get_scheduler()};
       }
     };
@@ -146,7 +146,7 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS { namespace _sync_wait {
     using receiver_t = stdexec::__t<receiver_t<stdexec::__id<Sender>>>;
 
     template <__single_value_variant_sender<__env> Sender>
-      requires sender_in<Sender, __env> && __receiver_from<receiver_t<Sender>, Sender>
+      requires sender<Sender, __env> && __receiver_from<receiver_t<Sender>, Sender>
     auto operator()(context_state_t context_state, Sender&& __sndr) const
       -> std::optional<sync_wait_result_t<Sender>> {
       using state_t = state_t<stdexec::__id<Sender>>;
@@ -157,7 +157,7 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS { namespace _sync_wait {
       auto __op_state = make_host<exit_operation_state_t<Sender, receiver_t<Sender>>>(
         status, context_state.pinned_resource_, __conv{[&] {
           return exit_op_state(
-            static_cast<Sender&&>(__sndr), receiver_t<Sender>{{}, &state, &loop}, context_state);
+            (Sender&&) __sndr, receiver_t<Sender>{{}, &state, &loop}, context_state);
         }});
       if (status != cudaSuccess) {
         throw std::bad_alloc{};
@@ -182,10 +182,9 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS { namespace _sync_wait {
 #if STDEXEC_NVHPC()
     // For reporting better diagnostics with nvc++
     template <class _Sender, class _Error = stdexec::__sync_wait::__error_description_t<_Sender>>
-    auto operator()(
-      context_state_t context_state,
-      _Sender&&,
-      [[maybe_unused]] _Error __diagnostic = {}) const -> std::optional<std::tuple<int>> = delete;
+    auto operator()(context_state_t context_state, _Sender&&, [[maybe_unused]] _Error __diagnostic = {}) const
+      -> std::optional<std::tuple<int>> = delete;
 #endif
   };
-}} // namespace nvexec::STDEXEC_STREAM_DETAIL_NS::_sync_wait
+} // namespace _sync_wait
+} // namespace nvexec::STDEXEC_STREAM_DETAIL_NS

@@ -18,20 +18,15 @@
 #include "__config.hpp"
 #include "__meta.hpp"
 #include "__concepts.hpp"
-#include "__type_traits.hpp"
 
 namespace stdexec {
-  struct __none_such;
-
-  //////////////////////////////////////////////////////////////////////////////////////////////////
-  struct default_domain;
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   namespace __receivers {
     struct set_value_t;
     struct set_error_t;
     struct set_stopped_t;
-  } // namespace __receivers
+  }
 
   using __receivers::set_value_t;
   using __receivers::set_error_t;
@@ -41,9 +36,7 @@ namespace stdexec {
   extern const set_stopped_t set_stopped;
 
   template <class _Tag>
-  concept __completion_tag = __one_of<_Tag, set_value_t, set_error_t, set_stopped_t>;
-
-  struct receiver_t;
+  inline constexpr bool __completion_tag = __one_off<_Tag, set_value_t, set_error_t, set_stopped_t>;
 
   template <class _Sender>
   extern const bool enable_receiver;
@@ -51,12 +44,8 @@ namespace stdexec {
   //////////////////////////////////////////////////////////////////////////////////////////////////
   namespace __env {
     struct get_env_t;
-
-    struct empty_env {
-      using __t = empty_env;
-      using __id = empty_env;
-    };
-  } // namespace __env
+    struct empty_env;
+  }
 
   using __env::empty_env;
   using __env::get_env_t;
@@ -81,7 +70,7 @@ namespace stdexec {
     struct get_delegatee_scheduler_t;
     struct get_allocator_t;
     struct get_stop_token_t;
-    template <__completion_tag _CPO>
+    template <typename _CPO>
     struct get_completion_scheduler_t;
   } // namespace __queries
 
@@ -103,15 +92,15 @@ namespace stdexec {
   extern const get_delegatee_scheduler_t get_delegatee_scheduler;
   extern const get_allocator_t get_allocator;
   extern const get_stop_token_t get_stop_token;
-  template <__completion_tag _CPO>
+  template <typename _CPO, std::enable_if_t<__completion_tag<_CPO>, int> = 0>
   extern const get_completion_scheduler_t<_CPO> get_completion_scheduler;
 
   template <class _Tp>
   using stop_token_of_t = __decay_t<__call_result_t<get_stop_token_t, _Tp>>;
 
   template <class _Sender, class _CPO>
-  concept __has_completion_scheduler =
-    __callable<get_completion_scheduler_t<_CPO>, env_of_t<const _Sender&>>;
+  inline constexpr bool __has_completion_scheduler =
+    std::is_invocable_v<get_completion_scheduler_t<_CPO>, env_of_t<const _Sender&>>;
 
   template <class _Sender, class _CPO>
   using __completion_scheduler_for =
@@ -120,15 +109,18 @@ namespace stdexec {
   //////////////////////////////////////////////////////////////////////////////////////////////////
   namespace __get_completion_signatures {
     struct get_completion_signatures_t;
-  } // namespace __get_completion_signatures
+  }
 
   using __get_completion_signatures::get_completion_signatures_t;
   extern const get_completion_signatures_t get_completion_signatures;
 
+  template <class _Sender, class _Env>
+  using __completion_signatures_of_t = __call_result_t< get_completion_signatures_t, _Sender, _Env>;
+
   //////////////////////////////////////////////////////////////////////////////////////////////////
   namespace __connect {
     struct connect_t;
-  } // namespace __connect
+  }
 
   using __connect::connect_t;
   extern const connect_t connect;
@@ -137,9 +129,7 @@ namespace stdexec {
   using connect_result_t = __call_result_t<connect_t, _Sender, _Receiver>;
 
   template <class _Sender, class _Receiver>
-  concept __nothrow_connectable = __nothrow_callable<connect_t, _Sender, _Receiver>;
-
-  struct sender_t;
+  inline constexpr bool __nothrow_connectable = __nothrow_callable<connect_t, _Sender, _Receiver>;
 
   template <class _Sender>
   extern const bool enable_sender;
@@ -147,7 +137,7 @@ namespace stdexec {
   //////////////////////////////////////////////////////////////////////////////////////////////////
   namespace __start {
     struct start_t;
-  } // namespace __start
+  }
 
   using __start::start_t;
   extern const start_t start;
@@ -155,7 +145,7 @@ namespace stdexec {
   //////////////////////////////////////////////////////////////////////////////////////////////////
   namespace __schedule {
     struct schedule_t;
-  } // namespace __schedule
+  }
 
   using __schedule::schedule_t;
   extern const schedule_t schedule;
@@ -163,88 +153,9 @@ namespace stdexec {
   //////////////////////////////////////////////////////////////////////////////////////////////////
   namespace __as_awaitable {
     struct as_awaitable_t;
-  } // namespace __as_awaitable
+  }
 
   using __as_awaitable::as_awaitable_t;
   extern const as_awaitable_t as_awaitable;
 
-  //////////////////////////////////////////////////////////////////////////////////////////////////
-  namespace __start_on {
-    struct start_on_t;
-  } // namespace __start_on
-
-  using __start_on::start_on_t;
-  extern const start_on_t start_on;
-
-  using on_t = start_on_t;
-  extern const on_t on;
-
-  //////////////////////////////////////////////////////////////////////////////////////////////////
-  namespace __continue_on {
-    struct continue_on_t;
-  } // namespace __continue_on
-
-  using __continue_on::continue_on_t;
-  extern const continue_on_t continue_on;
-
-  using transfer_t = continue_on_t;
-  extern const transfer_t transfer;
-
-  //////////////////////////////////////////////////////////////////////////////////////////////////
-  namespace __transfer_just {
-    struct transfer_just_t;
-  } // namespace __transfer_just
-
-  using __transfer_just::transfer_just_t;
-  extern const transfer_just_t transfer_just;
-
-  //////////////////////////////////////////////////////////////////////////////////////////////////
-  namespace __bulk {
-    struct bulk_t;
-  } // namespace __bulk
-
-  using __bulk::bulk_t;
-  extern const bulk_t bulk;
-
-  //////////////////////////////////////////////////////////////////////////////////////////////////
-  namespace __split {
-    struct split_t;
-    struct __split_t;
-  } // namespace __split
-
-  using __split::split_t;
-  extern const split_t split;
-
-  //////////////////////////////////////////////////////////////////////////////////////////////////
-  namespace __ensure_started {
-    struct ensure_started_t;
-    struct __ensure_started_t;
-  } // namespace __ensure_started
-
-  using __ensure_started::ensure_started_t;
-  extern const ensure_started_t ensure_started;
-
-  //////////////////////////////////////////////////////////////////////////////////////////////////
-  namespace __on_v2 {
-    struct on_t;
-  } // namespace __on_v2
-
-  namespace v2 {
-    using __on_v2::on_t;
-  } // namespace v2
-
-  namespace __detail {
-    struct __sexpr_apply_t;
-  } // namespace __detail
-
-  using __detail::__sexpr_apply_t;
-  extern const __sexpr_apply_t __sexpr_apply;
-} // namespace stdexec
-
-template <class...>
-[[deprecated]]
-void print() {
 }
-
-template <class>
-struct undef;

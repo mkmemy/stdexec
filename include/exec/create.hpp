@@ -26,92 +26,73 @@ namespace exec {
     struct __void {
       template <class _Fun>
       void emplace(_Fun&& __fun) noexcept(__nothrow_callable<_Fun>) {
-        static_cast<_Fun&&>(__fun)();
+        ((_Fun&&) __fun)();
       }
     };
 
     template <class _Receiver, class _Args>
     struct __context {
-      STDEXEC_ATTRIBUTE((no_unique_address))
-      _Receiver receiver;
-      STDEXEC_ATTRIBUTE((no_unique_address))
-      _Args args;
+      STDEXEC_NO_UNIQUE_ADDRESS _Receiver receiver;
+      STDEXEC_NO_UNIQUE_ADDRESS _Args args;
     };
 
     template <class _ReceiverId, class _Fun, class _ArgsId>
     struct __operation {
-      using _Context = __context<stdexec::__t<_ReceiverId>, stdexec::__t<_ArgsId>>;
+      using _Context = __context<__t<_ReceiverId>, __t<_ArgsId>>;
       using _Result = __call_result_t<_Fun, _Context&>;
       using _State = __if_c<same_as<_Result, void>, __void, std::optional<_Result>>;
 
-      struct __t : stdexec::__immovable {
-        using __id = __operation;
+      STDEXEC_NO_UNIQUE_ADDRESS _Context __ctx_;
+      STDEXEC_NO_UNIQUE_ADDRESS _Fun __fun_;
+      STDEXEC_NO_UNIQUE_ADDRESS _State __state_{};
 
-        STDEXEC_ATTRIBUTE((no_unique_address))
-        _Context __ctx_;
-        STDEXEC_ATTRIBUTE((no_unique_address))
-        _Fun __fun_;
-        STDEXEC_ATTRIBUTE((no_unique_address))
-        _State __state_{};
-
-        STDEXEC_MEMFN_DECL(void start)(this __t& __self) noexcept {
-          __self.__state_.emplace(__conv{[&]() noexcept {
-            return static_cast<_Fun&&>(__self.__fun_)(__self.__ctx_);
-          }});
-        }
-      };
+      friend void tag_invoke(start_t, __operation& __self) noexcept {
+        __self.__state_.emplace(__conv{[&]() noexcept {
+          return ((_Fun&&) __self.__fun_)(__self.__ctx_);
+        }});
+      }
     };
 
     template <class _Fun, class _ArgsId, class... _Sigs>
     struct __sender {
-      using _Args = stdexec::__t<_ArgsId>;
+      using _Args = __t<_ArgsId>;
+      using is_sender = void;
+      using completion_signatures = stdexec::completion_signatures<_Sigs...>;
 
-      struct __t {
-        using __id = __sender;
-        using sender_concept = stdexec::sender_t;
-        using completion_signatures = stdexec::completion_signatures<_Sigs...>;
+      _Fun __fun_;
+      _Args __args_;
 
-        _Fun __fun_;
-        _Args __args_;
+      template <__decays_to<__sender> _Self, receiver_of<completion_signatures> _Receiver>
+        requires std::is_invocable_v<_Fun, __context<_Receiver, _Args>&>
+              && constructible_from<_Fun, __copy_cvref_t<_Self, _Fun>>
+              && constructible_from<_Args, __copy_cvref_t<_Self, _Args>>
+      friend auto tag_invoke(connect_t, _Self&& __self, _Receiver __rcvr)
+        -> __operation<__x<_Receiver>, _Fun, _ArgsId> {
+        static_assert(__nothrow_callable<_Fun, __context<_Receiver, _Args>&>);
+        return {
+          {(_Receiver&&) __rcvr, ((_Self&&) __self).__args_},
+          ((_Self&&) __self).__fun_
+        };
+      }
 
-        template <__decays_to<__t> _Self, receiver_of<completion_signatures> _Receiver>
-          requires __callable<_Fun, __context<_Receiver, _Args>&>
-                && constructible_from<_Fun, __copy_cvref_t<_Self, _Fun>>
-                && constructible_from<_Args, __copy_cvref_t<_Self, _Args>>
-        STDEXEC_MEMFN_DECL(
-          auto connect)(this _Self&& __self, _Receiver __rcvr)
-          -> stdexec::__t<__operation<stdexec::__id<_Receiver>, _Fun, _ArgsId>> {
-          static_assert(__nothrow_callable<_Fun, __context<_Receiver, _Args>&>);
-          return {
-            {},
-            {static_cast<_Receiver&&>(__rcvr), static_cast<_Self&&>(__self).__args_},
-            static_cast<_Self&&>(__self).__fun_
-          };
-        }
-
-        STDEXEC_MEMFN_DECL(auto get_env)(this const __t&) noexcept -> empty_env {
-          return {};
-        }
-      };
+      friend empty_env tag_invoke(get_env_t, const __sender&) noexcept {
+        return {};
+      }
     };
 
-    template <__completion_signature... _Sigs>
+    template <typename... _Sigs>
     struct __create_t {
+	static_assert((__completion_signature<_Sigs> && ...));
+
       template <class _Fun, class... _Args>
         requires move_constructible<_Fun> && constructible_from<__decayed_tuple<_Args...>, _Args...>
       auto operator()(_Fun __fun, _Args&&... __args) const
-        -> __t<__sender<_Fun, __id<__decayed_tuple<_Args...>>, _Sigs...>> {
-        return {static_cast<_Fun&&>(__fun), {static_cast<_Args&&>(__args)...}};
+        -> __sender<_Fun, __x<__decayed_tuple<_Args...>>, _Sigs...> {
+        return {(_Fun&&) __fun, {(_Args&&) __args...}};
       }
     };
   } // namespace __create
 
-  template <class... _Sigs>
-  extern const stdexec::__mfront<void, _Sigs...> create;
-
-  template <stdexec::__completion_signature... _Sigs>
-  inline constexpr __create::__create_t<_Sigs...> create<_Sigs...>{};
-
-  template <stdexec::__completion_signature... _Sigs>
-  inline constexpr __create::__create_t<_Sigs...> create<stdexec::completion_signatures<_Sigs...>>{};
-} // namespace exec
+  template <typename... _Sigs>
+  inline constexpr __create::__create_t<_Sigs...> create{};
+}

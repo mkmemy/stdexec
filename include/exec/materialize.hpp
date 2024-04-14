@@ -16,8 +16,7 @@
  */
 #pragma once
 
-#include "../stdexec/execution.hpp"
-#include "../stdexec/concepts.hpp"
+#include <stdexec/execution.hpp>
 
 namespace exec {
   namespace __materialize {
@@ -29,24 +28,23 @@ namespace exec {
 
       class __t {
        public:
-        using receiver_concept = stdexec::receiver_t;
+        using is_receiver = void;
 
         __t(_Receiver&& __upstream)
-          : __upstream_{static_cast<_Receiver&&>(__upstream)} {
+          : __upstream_{(_Receiver&&) __upstream} {
         }
 
        private:
         _Receiver __upstream_;
 
-        template <__completion_tag _Tag, __decays_to<__t> _Self, class... _Args>
+        template <typename _Tag, __decays_to<__t> _Self, class... _Args, std::enable_if_t<__completion_tag<_Tag>, int> = 0>
           requires tag_invocable<set_value_t, _Receiver&&, _Tag, _Args...>
         friend void tag_invoke(_Tag tag, _Self&& __self, _Args&&... __args) noexcept {
-          set_value(
-            static_cast<_Receiver&&>(__self.__upstream_), _Tag{}, static_cast<_Args&&>(__args)...);
+          set_value((_Receiver&&) __self.__upstream_, _Tag{}, (_Args&&) __args...);
         }
 
         template <std::same_as<__t> _Self>
-        STDEXEC_MEMFN_DECL(auto get_env)(this const _Self& __self) noexcept -> env_of_t<_Receiver> {
+        friend env_of_t<_Receiver> tag_invoke(get_env_t, const _Self& __self) noexcept {
           return get_env(__self.__upstream_);
         }
       };
@@ -61,11 +59,11 @@ namespace exec {
 
       class __t {
        public:
-        using sender_concept = stdexec::sender_t;
+        using is_sender = void;
 
         template <__decays_to<_Sender> _Sndr>
         __t(_Sndr&& __sender)
-          : __sender_{static_cast<_Sndr&&>(__sender)} {
+          : __sender_{(_Sndr&&) __sender} {
         }
 
         //  private:
@@ -73,13 +71,11 @@ namespace exec {
 
         template <__decays_to<__t> _Self, class _Receiver>
           requires sender_to<__copy_cvref_t<_Self, _Sender>, __receiver_t<_Receiver>>
-        STDEXEC_MEMFN_DECL(
-          auto connect)(this _Self&& __self, _Receiver&& __receiver) //
-          noexcept(__nothrow_connectable<__copy_cvref_t<_Self, _Sender>, __receiver_t<_Receiver>>)
-            -> connect_result_t<__copy_cvref_t<_Self, _Sender>, __receiver_t<_Receiver>> {
+        friend connect_result_t<__copy_cvref_t<_Self, _Sender>, __receiver_t<_Receiver>>
+          tag_invoke(connect_t, _Self&& __self, _Receiver&& __receiver) noexcept(
+            __nothrow_connectable<__copy_cvref_t<_Self, _Sender>, __receiver_t<_Receiver>>) {
           return stdexec::connect(
-            static_cast<_Self&&>(__self).__sender_,
-            __receiver_t<_Receiver>{static_cast<_Receiver&&>(__receiver)});
+            ((_Self&&) __self).__sender_, __receiver_t<_Receiver>{(_Receiver&&) __receiver});
         }
 
         template <class... _Args>
@@ -98,7 +94,7 @@ namespace exec {
           completion_signatures<set_value_t(set_stopped_t)>>;
 
         template <__decays_to<__t> _Self, class _Env>
-        STDEXEC_MEMFN_DECL(auto get_completion_signatures)(this _Self&& __self, _Env __env)
+        friend auto tag_invoke(get_completion_signatures_t, _Self&& __self, _Env __env)
           -> __completion_signatures_for_t<_Env> {
           return {};
         }
@@ -107,18 +103,16 @@ namespace exec {
 
     struct __materialize_t {
       template <class _Sender>
-      __t<__sender<__id<__decay_t<_Sender>>>>
-        operator()(_Sender&& __sender) const noexcept(__nothrow_decay_copyable<_Sender>) {
-        return {static_cast<_Sender&&>(__sender)};
+      __t<__sender<__id<__decay_t<_Sender>>>> operator()(_Sender&& __sender) const
+        noexcept(__nothrow_decay_copyable<_Sender>) {
+        return {(_Sender&&) __sender};
       }
 
-      STDEXEC_ATTRIBUTE((always_inline))
-      auto
-        operator()() const noexcept -> __binder_back<__materialize_t> {
-        return {};
+      __binder_back<__materialize_t> operator()() const noexcept {
+        return {{}, {}, {}};
       }
     };
-  } // namespace __materialize
+  }
 
   inline constexpr __materialize::__materialize_t materialize;
 
@@ -131,10 +125,10 @@ namespace exec {
 
       class __t {
        public:
-        using receiver_concept = stdexec::receiver_t;
+        using is_receiver = void;
 
         __t(_Receiver&& __upstream)
-          : __upstream_{static_cast<_Receiver&&>(__upstream)} {
+          : __upstream_{(_Receiver&&) __upstream} {
         }
 
        private:
@@ -142,22 +136,24 @@ namespace exec {
 
         template <
           same_as<set_value_t> _Tag,
-          __completion_tag _Tag2,
+          typename _Tag2,
           __decays_to<__t> _Self,
-          class... _Args>
+          class... _Args,
+		  std::enable_if_t<__completion_tag<_Tag2>, int> = 0
+		>
           requires tag_invocable<_Tag2, _Receiver&&, _Args...>
         friend void tag_invoke(_Tag, _Self&& __self, _Tag2 tag2, _Args&&... __args) noexcept {
-          tag2(static_cast<_Receiver&&>(__self.__upstream_), static_cast<_Args&&>(__args)...);
+          tag2((_Receiver&&) __self.__upstream_, (_Args&&) __args...);
         }
 
         template <__one_of<set_stopped_t, set_error_t> _Tag, __decays_to<__t> _Self, class... _Args>
           requires tag_invocable<_Tag, _Receiver&&, _Args...>
         friend void tag_invoke(_Tag tag, _Self&& __self, _Args&&... __args) noexcept {
-          tag(static_cast<_Receiver&&>(__self.__upstream_), static_cast<_Args&&>(__args)...);
+          tag((_Receiver&&) __self.__upstream_, (_Args&&) __args...);
         }
 
         template <std::same_as<__t> _Self>
-        STDEXEC_MEMFN_DECL(auto get_env)(this const _Self& __self) noexcept -> env_of_t<_Receiver> {
+        friend env_of_t<_Receiver> tag_invoke(get_env_t, const _Self& __self) noexcept {
           return get_env(__self.__upstream_);
         }
       };
@@ -172,11 +168,11 @@ namespace exec {
 
       class __t {
        public:
-        using sender_concept = stdexec::sender_t;
+        using is_sender = void;
 
         template <__decays_to<_Sender> _Sndr>
         __t(_Sndr&& __sndr) noexcept(__nothrow_decay_copyable<_Sndr>)
-          : __sender_{static_cast<_Sndr&&>(__sndr)} {
+          : __sender_{(_Sndr&&) __sndr} {
         }
 
        private:
@@ -184,13 +180,11 @@ namespace exec {
 
         template <__decays_to<__t> _Self, class _Receiver>
           requires sender_to<__copy_cvref_t<_Self, _Sender>, __receiver_t<_Receiver>>
-        STDEXEC_MEMFN_DECL(
-          auto connect)(this _Self&& __self, _Receiver&& __receiver) //
-          noexcept(__nothrow_connectable<__copy_cvref_t<_Self, _Sender>, __receiver_t<_Receiver>>)
-            -> connect_result_t<__copy_cvref_t<_Self, _Sender>, __receiver_t<_Receiver>> {
+        friend connect_result_t<__copy_cvref_t<_Self, _Sender>, __receiver_t<_Receiver>>
+          tag_invoke(connect_t, _Self&& __self, _Receiver&& __receiver) noexcept(
+            __nothrow_connectable<__copy_cvref_t<_Self, _Sender>, __receiver_t<_Receiver>>) {
           return stdexec::connect(
-            static_cast<_Self&&>(__self).__sender_,
-            __receiver_t<_Receiver>{static_cast<_Receiver&&>(__receiver)});
+            ((_Self&&) __self).__sender_, __receiver_t<_Receiver>{(_Receiver&&) __receiver});
         }
 
         template <class _Tag, class... _Args>
@@ -202,7 +196,7 @@ namespace exec {
           make_completion_signatures<_Sender, _Env, completion_signatures<>, __dematerialize_value>;
 
         template <__decays_to<__t> _Self, class _Env>
-        STDEXEC_MEMFN_DECL(auto get_completion_signatures)(this _Self&& __self, _Env __env)
+        friend auto tag_invoke(get_completion_signatures_t, _Self&& __self, _Env __env)
           -> __completion_signatures_for_t<_Env> {
           return {};
         }
@@ -213,19 +207,17 @@ namespace exec {
       template <class _Sender>
       using __sender_t = __t<__sender<__id<_Sender>>>;
 
-      template <sender _Sender>
-      auto operator()(_Sender&& __sndr) const noexcept(__nothrow_decay_copyable<_Sender>)
-        -> __sender_t<_Sender> {
-        return __sender_t<_Sender>(static_cast<_Sender&&>(__sndr));
+      template <typename _Sender, std::enable_if_t<sender<_Sender>, int> = 0>
+      __sender_t<_Sender> operator()(_Sender&& __sndr) const
+        noexcept(__nothrow_decay_copyable<_Sender>) {
+        return __sender_t<_Sender>((_Sender&&) __sndr);
       }
 
-      STDEXEC_ATTRIBUTE((always_inline))
-      auto
-        operator()() const noexcept -> __binder_back<__dematerialize_t> {
-        return {};
+      __binder_back<__dematerialize_t> operator()() const noexcept {
+        return {{}, {}, {}};
       }
     };
-  } // namespace __dematerialize
+  }
 
   inline constexpr __dematerialize::__dematerialize_t dematerialize;
-} // namespace exec
+}

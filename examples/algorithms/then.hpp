@@ -19,8 +19,6 @@
 // Pull in the reference implementation of P2300:
 #include <stdexec/execution.hpp>
 
-using namespace stdexec::tags;
-
 ///////////////////////////////////////////////////////////////////////////////
 // then algorithm:
 template <class R, class F>
@@ -39,8 +37,7 @@ class _then_receiver : stdexec::receiver_adaptor<_then_receiver<R, F>, R> {
     requires stdexec::receiver_of<R, _completions<As...>>
   void set_value(As&&... as) && noexcept {
     try {
-      stdexec::set_value(
-        std::move(*this).base(), std::invoke(static_cast<F&&>(f_), static_cast<As&&>(as)...));
+      stdexec::set_value(std::move(*this).base(), std::invoke((F&&) f_, (As&&) as...));
     } catch (...) {
       stdexec::set_error(std::move(*this).base(), std::current_exception());
     }
@@ -53,9 +50,9 @@ class _then_receiver : stdexec::receiver_adaptor<_then_receiver<R, F>, R> {
   }
 };
 
-template <stdexec::sender S, class F>
+template <typename S, class F>
 struct _then_sender {
-  using sender_concept = stdexec::sender_t;
+  using is_sender = void;
 
   S s_;
   F f_;
@@ -63,7 +60,7 @@ struct _then_sender {
   // Compute the completion signatures
   template <class... Args>
   using _set_value_t =
-    stdexec::completion_signatures<stdexec::set_value_t(std::invoke_result_t<F, Args...>)>;
+    stdexec::completion_signatures< stdexec::set_value_t(std::invoke_result_t<F, Args...>)>;
 
   template <class Env>
   using _completions_t = //
@@ -74,25 +71,32 @@ struct _then_sender {
       _set_value_t>;
 
   template <class Env>
-  STDEXEC_MEMFN_DECL(auto get_completion_signatures)(this _then_sender&&, Env) -> _completions_t<Env> {
+  friend auto tag_invoke(stdexec::get_completion_signatures_t, _then_sender&&, Env)
+    -> _completions_t<Env> {
     return {};
   }
 
   // Connect:
   template <class R>
-  STDEXEC_MEMFN_DECL(auto connect)(this _then_sender&& self, R r)
+  //requires stdexec::receiver_of<R, _completions_t<stdexec::env_of_t<R>>>
+  //requires stdexec::receiver_of<R, stdexec::completion_signatures_of_t<S, stdexec::env_of_t<R>>>
+  friend auto tag_invoke(stdexec::connect_t, _then_sender&& self, R r)
     -> stdexec::connect_result_t<S, _then_receiver<R, F>> {
-    return stdexec::connect(
-      static_cast<S&&>(self.s_),
-      _then_receiver<R, F>{static_cast<R&&>(r), static_cast<F&&>(self.f_)});
+    return stdexec::connect((S&&) self.s_, _then_receiver<R, F>{(R&&) r, (F&&) self.f_});
   }
 
-  STDEXEC_MEMFN_DECL(auto get_env)(this const _then_sender& self) noexcept -> stdexec::env_of_t<S> {
+  friend auto tag_invoke(stdexec::get_env_t, const _then_sender& self) //
+    noexcept(noexcept(stdexec::get_env(self.s_))) -> std::invoke_result_t<stdexec::get_env_t, S> {
     return stdexec::get_env(self.s_);
   }
+
+    // template <class Rcvr>
+	// auto connect(Rcvr rcvr, _then_sender&& self) const noexcept {
+    //   return stdexec::connect((S&&) self.s_, _then_receiver<Rcvr, F>{(Rcvr&&) rcvr, (F&&) self.f_});
+    // }
 };
 
-template <stdexec::sender S, class F>
-stdexec::sender auto then(S s, F f) {
-  return _then_sender<S, F>{static_cast<S&&>(s), static_cast<F&&>(f)};
+template <typename S, class F>
+auto then(S s, F f) {
+  return _then_sender<S, F>{(S&&) s, (F&&) f};
 }

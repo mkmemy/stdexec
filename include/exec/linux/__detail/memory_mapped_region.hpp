@@ -16,8 +16,6 @@
  */
 #pragma once
 
-#include "../memory_mapped_region.hpp"
-
 #include <cstdint>
 #include <utility>
 #include <sys/mman.h>
@@ -42,8 +40,8 @@ namespace exec {
     , __size_(std::exchange(__other.__size_, 0)) {
   }
 
-  inline auto memory_mapped_region::operator=(memory_mapped_region&& __other) noexcept
-    -> memory_mapped_region& {
+  inline memory_mapped_region&
+    memory_mapped_region::operator=(memory_mapped_region&& __other) noexcept {
     if (this != &__other) {
       if (__ptr_) {
         ::munmap(__ptr_, __size_);
@@ -58,11 +56,11 @@ namespace exec {
     return __ptr_ != nullptr;
   }
 
-  inline auto memory_mapped_region::data() const noexcept -> void* {
+  inline void* memory_mapped_region::data() const noexcept {
     return __ptr_;
   }
 
-  inline auto memory_mapped_region::size() const noexcept -> std::size_t {
+  inline std::size_t memory_mapped_region::size() const noexcept {
     return __size_;
   }
-} // namespace exec
+}

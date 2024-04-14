@@ -22,31 +22,28 @@
 
 namespace ex = stdexec;
 
-namespace {
+// TODO: implement upon_stopped
+TEST_CASE("upon_stopped returns a sender", "[adaptors][upon_stopped]") {
+  auto snd = ex::upon_stopped(ex::just_stopped(), []() {});
+  static_assert(ex::sender<decltype(snd)>);
+  (void) snd;
+}
 
-  // TODO: implement upon_stopped
-  TEST_CASE("upon_stopped returns a sender", "[adaptors][upon_stopped]") {
-    auto snd = ex::upon_stopped(ex::just_stopped(), []() {});
-    static_assert(ex::sender<decltype(snd)>);
-    (void) snd;
-  }
+TEST_CASE("upon_stopped with environment returns a sender", "[adaptors][upon_stopped]") {
+  auto snd = ex::upon_stopped(ex::just_stopped(), []() {});
+  static_assert(ex::sender_in<decltype(snd), empty_env>);
+  (void) snd;
+}
 
-  TEST_CASE("upon_stopped with environment returns a sender", "[adaptors][upon_stopped]") {
-    auto snd = ex::upon_stopped(ex::just_stopped(), []() {});
-    static_assert(ex::sender_in<decltype(snd), empty_env>);
-    (void) snd;
-  }
-
-  TEST_CASE("upon_stopped simple example", "[adaptors][upon_stopped]") {
-    bool called{false};
-    auto snd = ex::upon_stopped(ex::just_stopped(), [&]() {
-      called = true;
-      return 0;
-    });
-    auto op = ex::connect(std::move(snd), expect_value_receiver{0});
-    ex::start(op);
-    // The receiver checks that it's called
-    // we also check that the function was invoked
-    CHECK(called);
-  }
-} // namespace
+TEST_CASE("upon_stopped simple example", "[adaptors][upon_stopped]") {
+  bool called{false};
+  auto snd = ex::upon_stopped(ex::just_stopped(), [&]() {
+    called = true;
+    return 0;
+  });
+  auto op = ex::connect(std::move(snd), expect_value_receiver{0});
+  ex::start(op);
+  // The receiver checks that it's called
+  // we also check that the function was invoked
+  CHECK(called);
+}

@@ -18,13 +18,13 @@
 // Internal header, do not include directly
 
 #ifdef STDEXEC_DISABLE_STD_DEPRECATIONS
-#  define STDEXEC_STD_DEPRECATED
+#define STDEXEC_STD_DEPRECATED
 #else
-#  define STDEXEC_STD_DEPRECATED                                                                   \
-    [[deprecated(                                                                                  \
-      "Please access this entity in the ::stdexec:: namespace. Define "                            \
-      "STDEXEC_DISABLE_STD_DEPRECATIONS to silence this "                                          \
-      "warning.")]]
+#define STDEXEC_STD_DEPRECATED \
+  [[deprecated( \
+    "Please access this entity in the ::stdexec:: namespace. Define " \
+    "STDEXEC_DISABLE_STD_DEPRECATIONS to silence this " \
+    "warning.")]]
 #endif
 
 namespace std {
@@ -62,11 +62,11 @@ namespace std {
   concept unstoppable_token /*STDEXEC_STD_DEPRECATED*/ = stdexec::unstoppable_token<_Token>;
 
   using never_stop_token STDEXEC_STD_DEPRECATED = stdexec::never_stop_token;
-  using in_place_stop_token STDEXEC_STD_DEPRECATED = stdexec::inplace_stop_token;
-  using in_place_stop_source STDEXEC_STD_DEPRECATED = stdexec::inplace_stop_source;
+  using inplace_stop_token STDEXEC_STD_DEPRECATED = stdexec::inplace_stop_token;
+  using inplace_stop_source STDEXEC_STD_DEPRECATED = stdexec::inplace_stop_source;
 
   template <class _Callback>
-  using in_place_stop_callback STDEXEC_STD_DEPRECATED = stdexec::inplace_stop_callback<_Callback>;
+  using inplace_stop_callback STDEXEC_STD_DEPRECATED = stdexec::inplace_stop_callback<_Callback>;
 
   //////////////////////////////////////////////////////////////////////////////
   // <execution>
@@ -89,9 +89,7 @@ namespace std {
     using stop_token_of_t STDEXEC_STD_DEPRECATED = stdexec::stop_token_of_t<_StopTokenProvider>;
 
     // [exec.env], execution environments
-    struct __no_env { };
-
-    using no_env STDEXEC_STD_DEPRECATED = __no_env;
+    using no_env STDEXEC_STD_DEPRECATED = stdexec::no_env;
     using get_env_t STDEXEC_STD_DEPRECATED = stdexec::get_env_t;
     //using forwarding_env_query_t STDEXEC_STD_DEPRECATED = stdexec::forwarding_env_query_t; // BUGBUG
     STDEXEC_STD_DEPRECATED
@@ -140,13 +138,13 @@ namespace std {
     inline constexpr stdexec::start_t start{};
 
     // [exec.snd], senders
-    template <class _Sender, class _Env = __no_env>
+    template <class _Sender, class _Env = stdexec::no_env>
     concept sender /*STDEXEC_STD_DEPRECATED*/ = stdexec::sender_in<_Sender, _Env>;
 
     template <class _Sender, class _Receiver>
     concept sender_to /*STDEXEC_STD_DEPRECATED*/ = stdexec::sender_to<_Sender, _Receiver>;
 
-    template <class _Sender, class _SetSig, class _Env = __no_env>
+    template <class _Sender, class _SetSig, class _Env = stdexec::no_env>
     concept sender_of /*STDEXEC_STD_DEPRECATED*/ = stdexec::sender_of<_Sender, _SetSig, _Env>;
 
     // [exec.sndtraits], completion signatures
@@ -154,33 +152,30 @@ namespace std {
     STDEXEC_STD_DEPRECATED
     inline constexpr stdexec::get_completion_signatures_t get_completion_signatures{};
 
-    template <class _Sender, class _Env = __no_env>
+    template <class _Sender, class _Env = stdexec::no_env>
     using completion_signatures_of_t STDEXEC_STD_DEPRECATED =
       stdexec::completion_signatures_of_t<_Sender, _Env>;
 
     template <class _Env>
-    struct __dependent_completion_signatures { };
-
-    template <class _Env>
     using dependent_completion_signatures STDEXEC_STD_DEPRECATED =
-      __dependent_completion_signatures<_Env>;
+      stdexec::dependent_completion_signatures<_Env>;
 
     template <                                                     //
       class _Sender,                                               //
-      class _Env = __no_env,                                       //
+      class _Env = stdexec::no_env,                                //
       template <class...> class _Tuple = stdexec::__decayed_tuple, //
       template <class...> class _Variant = stdexec::__variant>
     using value_types_of_t STDEXEC_STD_DEPRECATED =
       stdexec::value_types_of_t<_Sender, _Env, _Tuple, _Variant>;
 
-    template <               //
-      class _Sender,         //
-      class _Env = __no_env, //
+    template <                      //
+      class _Sender,                //
+      class _Env = stdexec::no_env, //
       template <class...> class _Variant = stdexec::__variant>
     using error_types_of_t STDEXEC_STD_DEPRECATED =
       stdexec::error_types_of_t<_Sender, _Env, _Variant>;
 
-    template <class _Sender, class _Env = __no_env>
+    template <class _Sender, class _Env = stdexec::no_env>
     STDEXEC_STD_DEPRECATED inline constexpr bool sends_stopped =
       stdexec::sends_stopped<_Sender, _Env>;
 
@@ -300,7 +295,7 @@ namespace std {
     // [exec.utils.mkcmplsigs]
     template <       //
       class _Sender, //
-      class _Env = __no_env,
+      class _Env = stdexec::no_env,
       class _Sigs = stdexec::completion_signatures<>,                                   //
       template <class...> class _SetValue = stdexec::__compl_sigs::__default_set_value, //
       template <class> class _SetError = stdexec::__compl_sigs::__default_set_error,    //

@@ -36,12 +36,12 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
         struct receiver_t {
           __t& op_state_;
 
-          template <__completion_tag Tag, class... As>
+          template < __completion_tag Tag, class... As >
           friend void tag_invoke(Tag, receiver_t&& self, As&&... as) noexcept {
-            Tag()(std::move(self.op_state_.rcvr_), static_cast<As&&>(as)...);
+            Tag()(std::move(self.op_state_.rcvr_), (As&&) as...);
           }
 
-          STDEXEC_MEMFN_DECL(auto get_env)(this const receiver_t& self) noexcept -> Env {
+          friend Env tag_invoke(get_env_t, const receiver_t& self) noexcept {
             return self.op_state_.make_env();
           }
         };
@@ -57,12 +57,12 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
         ::cuda::std::atomic_flag started_{};
 
         using enqueue_receiver =
-          stdexec::__t<stream_enqueue_receiver<stdexec::__cvref_id<Env>, variant_t>>;
+          stdexec::__t<stream_enqueue_receiver<stdexec::__id<Env>, variant_t>>;
         using inner_op_state_t = connect_result_t<Sender, enqueue_receiver>;
         host_ptr<__decay_t<Env>> env_{};
         inner_op_state_t inner_op_;
 
-        STDEXEC_MEMFN_DECL(void start)(this __t& op) noexcept {
+        friend void tag_invoke(start_t, __t& op) noexcept {
           op.started_.test_and_set(::cuda::std::memory_order::relaxed);
 
           if (op.status_ != cudaSuccess) {
@@ -75,7 +75,7 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
         }
 
         __t(Sender&& sender, Receiver&& rcvr, context_state_t context_state)
-          : operation_state_base_t<ReceiverId>(static_cast<Receiver&&>(rcvr), context_state)
+          : operation_state_base_t<ReceiverId>((Receiver&&) rcvr, context_state)
           , context_state_(context_state)
           , storage_(make_host<variant_t>(this->status_, context_state.pinned_resource_))
           , task_(make_host<task_t>(
@@ -88,7 +88,7 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
                     .release())
           , env_(make_host(this->status_, context_state_.pinned_resource_, this->make_env()))
           , inner_op_{connect(
-              static_cast<Sender&&>(sender),
+              (Sender&&) sender,
               enqueue_receiver{
                 env_.get(),
                 storage_.get(),
@@ -102,7 +102,7 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
         STDEXEC_IMMOVABLE(__t);
       };
     };
-  } // namespace _transfer
+  }
 
   template <class SenderId>
   struct transfer_sender_t {
@@ -114,16 +114,16 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
       template <class Self, class Receiver>
       using op_state_th = //
         stdexec::__t<
-          _transfer::operation_state_t<__cvref_id<Self, Sender>, stdexec::__id<Receiver>>>;
+          _transfer::operation_state_t< __cvref_id<Self, Sender>, stdexec::__id<Receiver>>>;
 
       context_state_t context_state_;
       Sender sndr_;
 
       template <class... Ts>
-      using _set_value_t = completion_signatures<set_value_t(stdexec::__decay_t<Ts>&&...)>;
+      using _set_value_t = completion_signatures<set_value_t(__decay_t<Ts>&&...)>;
 
       template <class Ty>
-      using _set_error_t = completion_signatures<set_error_t(stdexec::__decay_t<Ty>&&)>;
+      using _set_error_t = completion_signatures<set_error_t(__decay_t<Ty>&&)>;
 
       template <class Self, class Env>
       using _completion_signatures_t = //
@@ -138,32 +138,25 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
 
       template <__decays_to<__t> Self, receiver Receiver>
         requires receiver_of<Receiver, _completion_signatures_t<Self, env_of_t<Receiver>>>
-      STDEXEC_MEMFN_DECL(auto connect)(this Self&& self, Receiver rcvr) -> op_state_th<Self, Receiver> {
+      friend auto tag_invoke(connect_t, Self&& self, Receiver rcvr) -> op_state_th<Self, Receiver> {
         return op_state_th<Self, Receiver>{
-          static_cast<Sender&&>(self.sndr_), static_cast<Receiver&&>(rcvr), self.context_state_};
+          (Sender&&) self.sndr_, (Receiver&&) rcvr, self.context_state_};
       }
 
       template <__decays_to<__t> Self, class Env>
-      STDEXEC_MEMFN_DECL(auto get_completion_signatures)(this Self&&, Env&&)
+      friend auto tag_invoke(get_completion_signatures_t, Self&&, Env&&)
         -> _completion_signatures_t<Self, Env> {
         return {};
       }
 
-      STDEXEC_MEMFN_DECL(auto get_env)(this const __t& self) noexcept -> env_of_t<const Sender&> {
+      friend auto tag_invoke(get_env_t, const __t& self) noexcept -> env_of_t<const Sender&> {
         return get_env(self.sndr_);
       }
 
       __t(context_state_t context_state, Sender sndr)
         : context_state_(context_state)
-        , sndr_{static_cast<Sender&&>(sndr)} {
+        , sndr_{(Sender&&) sndr} {
       }
     };
   };
-} // namespace nvexec::STDEXEC_STREAM_DETAIL_NS
-
-namespace stdexec::__detail {
-  template <class SenderId>
-  inline constexpr __mconst<
-    nvexec::STDEXEC_STREAM_DETAIL_NS::transfer_sender_t<__name_of<__t<SenderId>>>>
-    __name_of_v<nvexec::STDEXEC_STREAM_DETAIL_NS::transfer_sender_t<SenderId>>{};
-} // namespace stdexec::__detail
+}

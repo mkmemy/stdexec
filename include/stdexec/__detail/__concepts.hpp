@@ -28,7 +28,7 @@ namespace stdexec {
     };
   template <class _Fun, class... _As>
   concept __nothrow_callable =  //
-    __callable<_Fun, _As...> && //
+    std::is_invocable_v<_Fun, _As...> && //
     requires(_Fun&& __fun, _As&&... __as) {
       { static_cast<_Fun&&>(__fun)(static_cast<_As&&>(__as)...) } noexcept;
     };
@@ -42,7 +42,7 @@ namespace stdexec {
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   template <class _Ap, class _Bp>
-  concept __same_as = STDEXEC_IS_SAME(_Ap, _Bp);
+  concept __same_as = std::is_same_v<_Ap, _Bp>;
 
   // Handy concepts
   template <class _Ty, class _Up>
@@ -57,15 +57,28 @@ namespace stdexec {
   template <class...>
   concept __true = true;
 
+  template <class...>
+  inline constexpr bool __truee = true;
+
   template <class _Cp>
-  concept __class = __true<int _Cp::*> && (!__same_as<const _Cp, _Cp>);
+  concept __class = __true<int _Cp::*> && (!std::is_same_v<const _Cp, _Cp>);
+
+  template <class _Cp>
+  inline constexpr bool __classs = __truee<int _Cp::*> && (!std::is_same_v<const _Cp, _Cp>);
 
   template <class _Ty, class... _As>
-  concept __one_of = (__same_as<_Ty, _As> || ...);
+  concept __one_of = (std::is_same_v<_Ty, _As> || ...);
+
+  template <class _Ty, class... _As>
+  inline constexpr bool __one_off = (std::is_same_v<_Ty, _As> || ...);
 
   template <class _Ty, class... _Us>
   concept __all_of = (__same_as<_Ty, _Us> && ...);
 
+template <class _Ty, class... _Us>
+inline constexpr bool __all_off = (std::is_same_v<_Ty, _Us> && ...);
+template <class _Ty, class... _Us>
+inline constexpr bool __none_off = ((!std::is_same_v<_Ty, _Us>) &&...);
   template <class _Ty, class... _Us>
   concept __none_of = ((!__same_as<_Ty, _Us>) &&...);
 

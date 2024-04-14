@@ -47,9 +47,9 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
        public:
         using __id = receiver_t;
 
-        template <class... As>
-        STDEXEC_MEMFN_DECL(void set_value)(this __t&& self, As&&... as) noexcept
-          requires __callable<Fun, Shape&, As&...>
+        template <same_as<set_value_t> _Tag, class... As>
+        friend void tag_invoke(_Tag, __t&& self, As&&... as) noexcept
+          requires std::is_invocable_v<Fun, Shape&, As&...>
         {
           operation_state_base_t<ReceiverId>& op_state = self.op_state_;
 
@@ -63,7 +63,7 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
           }
 
           if (cudaError_t status = STDEXEC_DBG_ERR(cudaPeekAtLastError()); status == cudaSuccess) {
-            op_state.propagate_completion_signal(stdexec::set_value, static_cast<As&&>(as)...);
+            op_state.propagate_completion_signal(stdexec::set_value, (As&&) as...);
           } else {
             op_state.propagate_completion_signal(stdexec::set_error, std::move(status));
           }
@@ -71,21 +71,21 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
 
         template <__one_of<set_error_t, set_stopped_t> Tag, class... As>
         friend void tag_invoke(Tag, __t&& self, As&&... as) noexcept {
-          self.op_state_.propagate_completion_signal(Tag(), static_cast<As&&>(as)...);
+          self.op_state_.propagate_completion_signal(Tag(), (As&&) as...);
         }
 
-        STDEXEC_MEMFN_DECL(auto get_env)(this const __t& self) noexcept -> Env {
+        friend Env tag_invoke(get_env_t, const __t& self) noexcept {
           return self.op_state_.make_env();
         }
 
         explicit __t(Shape shape, Fun fun, operation_state_base_t<ReceiverId>& op_state)
           : shape_(shape)
-          , f_(static_cast<Fun&&>(fun))
+          , f_((Fun&&) fun)
           , op_state_(op_state) {
         }
       };
     };
-  } // namespace _bulk
+  }
 
   template <class SenderId, std::integral Shape, class Fun>
   struct bulk_sender_t {
@@ -97,13 +97,13 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
       Shape shape_;
       Fun fun_;
 
-      using _set_error_t = completion_signatures<set_error_t(cudaError_t)>;
+      using _set_error_t = completion_signatures< set_error_t(cudaError_t)>;
 
       template <class Receiver>
       using receiver_t = stdexec::__t<_bulk::receiver_t<stdexec::__id<Receiver>, Shape, Fun>>;
 
       template <class... Tys>
-      using _set_value_t = completion_signatures<set_value_t(Tys...)>;
+      using _set_value_t = completion_signatures< set_value_t(Tys...)>;
 
       template <class Self, class Env>
       using _completion_signatures_t = //
@@ -114,26 +114,25 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
           __q<_set_value_t>>;
 
       template <__decays_to<__t> Self, receiver Receiver>
-        requires receiver_of<Receiver, _completion_signatures_t<Self, env_of_t<Receiver>>>
-      STDEXEC_MEMFN_DECL(auto connect)(this Self&& self, Receiver rcvr)
+        requires receiver_of< Receiver, _completion_signatures_t<Self, env_of_t<Receiver>>>
+      friend auto tag_invoke(connect_t, Self&& self, Receiver rcvr)
         -> stream_op_state_t<__copy_cvref_t<Self, Sender>, receiver_t<Receiver>, Receiver> {
         return stream_op_state<__copy_cvref_t<Self, Sender>>(
-          static_cast<Self&&>(self).sndr_,
-          static_cast<Receiver&&>(rcvr),
+          ((Self&&) self).sndr_,
+          (Receiver&&) rcvr,
           [&](operation_state_base_t<stdexec::__id<Receiver>>& stream_provider)
             -> receiver_t<Receiver> {
-            return receiver_t<Receiver>(
-              self.shape_, static_cast<Fun&&>(self.fun_), stream_provider);
+            return receiver_t<Receiver>(self.shape_, (Fun&&) self.fun_, stream_provider);
           });
       }
 
       template <__decays_to<__t> Self, class Env>
-      STDEXEC_MEMFN_DECL(auto get_completion_signatures)(this Self&&, Env&&)
+      friend auto tag_invoke(get_completion_signatures_t, Self&&, Env&&)
         -> _completion_signatures_t<Self, Env> {
         return {};
       }
 
-      STDEXEC_MEMFN_DECL(auto get_env)(this const __t& self) noexcept -> env_of_t<const Sender&> {
+      friend auto tag_invoke(get_env_t, const __t& self) noexcept -> env_of_t<const Sender&> {
         return get_env(self.sndr_);
       }
     };
@@ -181,9 +180,9 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
        public:
         using __id = receiver_t;
 
-        template <class... As>
-        STDEXEC_MEMFN_DECL(void set_value)(this __t&& self, As&&... as) noexcept
-          requires __callable<Fun, Shape, As&...>
+        template <same_as<set_value_t> _Tag, class... As>
+        friend void tag_invoke(_Tag, __t&& self, As&&... as) noexcept
+          requires std::is_invocable_v<Fun, Shape, As&...>
         {
           operation_t<CvrefSenderId, ReceiverId, Shape, Fun>& op_state = self.op_state_;
 
@@ -203,7 +202,7 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
 
                 if (begin < end) {
                   cudaSetDevice(dev);
-                  cudaStreamWaitEvent(stream, op_state.ready_to_launch_, 0);
+                  cudaStreamWaitEvent(stream, op_state.ready_to_launch_);
                   kernel<block_threads, As&...>
                     <<<grid_blocks, block_threads, 0, stream>>>(begin, end, self.f_, as...);
                   cudaEventRecord(op_state.ready_to_complete_[dev], op_state.streams_[dev]);
@@ -226,13 +225,13 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
 
             for (int dev = 0; dev < op_state.num_devices_; dev++) {
               if (dev != op_state.current_device_) {
-                cudaStreamWaitEvent(baseline_stream, op_state.ready_to_complete_[dev], 0);
+                cudaStreamWaitEvent(baseline_stream, op_state.ready_to_complete_[dev]);
               }
             }
           }
 
           if (cudaError_t status = STDEXEC_DBG_ERR(cudaPeekAtLastError()); status == cudaSuccess) {
-            op_state.propagate_completion_signal(stdexec::set_value, static_cast<As&&>(as)...);
+            op_state.propagate_completion_signal(stdexec::set_value, (As&&) as...);
           } else {
             op_state.propagate_completion_signal(stdexec::set_error, std::move(status));
           }
@@ -240,10 +239,10 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
 
         template <__one_of<set_error_t, set_stopped_t> Tag, class... As>
         friend void tag_invoke(Tag, __t&& self, As&&... as) noexcept {
-          self.op_state_.propagate_completion_signal(Tag(), static_cast<As&&>(as)...);
+          self.op_state_.propagate_completion_signal(Tag(), (As&&) as...);
         }
 
-        STDEXEC_MEMFN_DECL(auto get_env)(this const __t& self) noexcept -> env_of_t<Receiver> {
+        friend env_of_t<Receiver> tag_invoke(get_env_t, const __t& self) noexcept {
           return get_env(self.op_state_.rcvr_);
         }
 
@@ -252,7 +251,7 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
           Fun fun,
           operation_t<CvrefSenderId, ReceiverId, Shape, Fun>& op_state)
           : shape_(shape)
-          , f_(static_cast<Fun&&>(fun))
+          , f_((Fun&&) fun)
           , op_state_(op_state) {
         }
       };
@@ -260,7 +259,7 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
 
     template <class SenderId, class ReceiverId, class Shape, class Fun>
     using operation_base_t =
-      operation_state_t<SenderId, receiver_t<SenderId, ReceiverId, Shape, Fun>, ReceiverId>;
+      operation_state_t< SenderId, receiver_t<SenderId, ReceiverId, Shape, Fun>, ReceiverId>;
 
     template <class CvrefSenderId, class ReceiverId, class Shape, class Fun>
     struct operation_t : operation_base_t<CvrefSenderId, ReceiverId, Shape, Fun> {
@@ -276,8 +275,8 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
         Fun fun,
         context_state_t context_state)
         : operation_base_t<CvrefSenderId, ReceiverId, Shape, Fun>(
-          static_cast<Sender&&>(__sndr),
-          static_cast<_Receiver2&&>(__rcvr),
+          (Sender&&) __sndr,
+          (_Receiver2&&) __rcvr,
           [&](operation_state_base_t<stdexec::__id<_Receiver2>>&)
             -> stdexec::__t<receiver_t<CvrefSenderId, ReceiverId, Shape, Fun>> {
             return stdexec::__t<receiver_t<CvrefSenderId, ReceiverId, Shape, Fun>>(
@@ -289,11 +288,11 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
         , ready_to_complete_(new cudaEvent_t[num_devices_]) {
         // TODO Manage errors
         cudaGetDevice(&current_device_);
-        cudaEventCreate(&ready_to_launch_, cudaEventDisableTiming);
+        cudaEventCreate(&ready_to_launch_);
         for (int dev = 0; dev < num_devices_; dev++) {
           cudaSetDevice(dev);
           cudaStreamCreate(streams_.get() + dev);
-          cudaEventCreate(ready_to_complete_.get() + dev, cudaEventDisableTiming);
+          cudaEventCreate(ready_to_complete_.get() + dev);
         }
         cudaSetDevice(current_device_);
       }
@@ -317,11 +316,11 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
       std::unique_ptr<cudaEvent_t[]> ready_to_complete_;
       cudaEvent_t ready_to_launch_;
     };
-  } // namespace multi_gpu_bulk
+  }
 
   template <class SenderId, std::integral Shape, class Fun>
   struct multi_gpu_bulk_sender_t {
-    using sender_concept = stdexec::sender_t;
+    using is_sender = void;
     using Sender = stdexec::__t<SenderId>;
 
     struct __t : stream_sender_base {
@@ -331,10 +330,10 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
       Shape shape_;
       Fun fun_;
 
-      using _set_error_t = completion_signatures<set_error_t(cudaError_t)>;
+      using _set_error_t = completion_signatures< set_error_t(cudaError_t)>;
 
       template <class... Tys>
-      using _set_value_t = completion_signatures<set_value_t(Tys...)>;
+      using _set_value_t = completion_signatures< set_value_t(Tys...)>;
 
       template <class Self, class Env>
       using _completion_signatures_t = //
@@ -346,42 +345,29 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
 
       template <__decays_to<__t> Self, receiver Receiver>
         requires receiver_of<Receiver, _completion_signatures_t<Self, env_of_t<Receiver>>>
-      STDEXEC_MEMFN_DECL(auto connect)(this Self&& self, Receiver&& rcvr) //
- -> multi_gpu_bulk::
+      friend auto tag_invoke(connect_t, Self&& self, Receiver&& rcvr) -> multi_gpu_bulk::
         operation_t<__cvref_id<Self, Sender>, stdexec::__id<Receiver>, Shape, Fun> {
         auto sch = get_completion_scheduler<set_value_t>(get_env(self.sndr_));
         context_state_t context_state = sch.context_state_;
         return multi_gpu_bulk::
           operation_t<__cvref_id<Self, Sender>, stdexec::__id<Receiver>, Shape, Fun>(
             self.num_devices_,
-            static_cast<Self&&>(self).sndr_,
-            static_cast<Receiver&&>(rcvr),
+            ((Self&&) self).sndr_,
+            (Receiver&&) rcvr,
             self.shape_,
             self.fun_,
             context_state);
       }
 
       template <__decays_to<__t> Self, class Env>
-      STDEXEC_MEMFN_DECL(auto get_completion_signatures)(this Self&&, Env&&)
+      friend auto tag_invoke(get_completion_signatures_t, Self&&, Env&&)
         -> _completion_signatures_t<Self, Env> {
         return {};
       }
 
-      STDEXEC_MEMFN_DECL(auto get_env)(this const __t& self) noexcept -> env_of_t<const Sender&> {
+      friend auto tag_invoke(get_env_t, const __t& self) noexcept -> env_of_t<const Sender&> {
         return get_env(self.sndr_);
       }
     };
   };
-} // namespace nvexec::STDEXEC_STREAM_DETAIL_NS
-
-namespace stdexec::__detail {
-  template <class SenderId, class Shape, class Fun>
-  inline constexpr __mconst<
-    nvexec::STDEXEC_STREAM_DETAIL_NS::bulk_sender_t<__name_of<__t<SenderId>>, Shape, Fun>>
-    __name_of_v<nvexec::STDEXEC_STREAM_DETAIL_NS::bulk_sender_t<SenderId, Shape, Fun>>{};
-
-  template <class SenderId, class Shape, class Fun>
-  inline constexpr __mconst<
-    nvexec::STDEXEC_STREAM_DETAIL_NS::multi_gpu_bulk_sender_t<__name_of<__t<SenderId>>, Shape, Fun>>
-    __name_of_v<nvexec::STDEXEC_STREAM_DETAIL_NS::multi_gpu_bulk_sender_t<SenderId, Shape, Fun>>{};
-} // namespace stdexec::__detail
+}

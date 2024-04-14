@@ -32,7 +32,7 @@
 #include "../detail/variant.cuh"
 
 namespace nvexec {
-  using stdexec::operator""_mstr;
+  using stdexec::operator""__csz;
 
   enum class stream_priority {
     high,
@@ -59,10 +59,10 @@ namespace nvexec {
   }
 #endif
 
-  inline STDEXEC_ATTRIBUTE((host, device)) bool is_on_gpu() noexcept {
+  inline STDEXEC_DETAIL_CUDACC_HOST_DEVICE bool is_on_gpu() noexcept {
     return get_device_type() == device_type::device;
   }
-} // namespace nvexec
+}
 
 namespace nvexec {
   struct stream_context;
@@ -197,11 +197,10 @@ namespace nvexec {
     struct stream_scheduler;
 
     struct stream_sender_base {
-      using sender_concept = stdexec::sender_t;
+      using is_sender = void;
     };
 
-    struct stream_receiver_base {
-      using receiver_concept = stdexec::receiver_t;
+    struct stream_receiver_base : __receiver_base {
       constexpr static std::size_t memory_allocation_size = 0;
     };
 
@@ -263,11 +262,6 @@ namespace nvexec {
       stream_provider_t* operator()(const Env& env) const noexcept {
         return tag_invoke(get_stream_provider_t{}, env);
       }
-
-      STDEXEC_ATTRIBUTE((host, device))
-      constexpr STDEXEC_MEMFN_DECL(bool forwarding_query)(this const get_stream_provider_t&) noexcept {
-        return true;
-      }
     };
 
     template <class... Ts>
@@ -279,7 +273,7 @@ namespace nvexec {
         __minvoke<
           __if_c<
             sizeof...(_Ts) != 0,
-            __transform<__q<__decay_t>, __munique<__q<variant_t>>>,
+            __transform< __q<__decay_t>, __munique<__q<variant_t>>>,
             __mconst<__not_a_variant>>,
           _Ts...>;
 
@@ -295,12 +289,13 @@ namespace nvexec {
       template <class _Sender, class _Env, class _State, class _Tag>
       using __bind_completions_t =
         __gather_completions_for<_Tag, _Sender, _Env, __tuple_t<_Tag>, __make_bind<_State>>;
-    } // namespace stream_storage_impl
+    }
 
     struct set_noop {
       template <class... Ts>
-      STDEXEC_ATTRIBUTE((host, device))
-      void operator()(Ts&&...) const noexcept {
+      STDEXEC_DETAIL_CUDACC_HOST_DEVICE //
+        void
+        operator()(Ts&&...) const noexcept {
         // TODO TRAP
         std::printf("ERROR: use of empty variant.");
       }
@@ -308,7 +303,7 @@ namespace nvexec {
 
     template <class _Sender, class _Env>
     using variant_storage_t = //
-      __minvoke<__minvoke<
+      __minvoke< __minvoke<
         __mfold_right<
           __mbind_front_q<stream_storage_impl::variant, ::cuda::std::tuple<set_noop>>,
           __mbind_front_q<stream_storage_impl::__bind_completions_t, _Sender, _Env>>,
@@ -320,32 +315,29 @@ namespace nvexec {
 
     struct get_stream_t {
       template <class Env>
-        requires __callable<get_stream_provider_t, const Env&>
+        requires std::is_invocable_v<get_stream_provider_t, const Env&>
       cudaStream_t operator()(const Env& env) const noexcept {
         return get_stream_provider(env)->own_stream_.value();
       }
 
-      STDEXEC_ATTRIBUTE((host, device))
-      auto operator()() const noexcept {
+      STDEXEC_DETAIL_CUDACC_HOST_DEVICE auto operator()() const noexcept {
         return stdexec::read(*this);
-      }
-
-      STDEXEC_ATTRIBUTE((host, device))
-      constexpr STDEXEC_MEMFN_DECL(bool forwarding_query)(this const get_stream_t&) noexcept {
-        return true;
       }
     };
 
     template <class BaseEnv>
     auto make_stream_env(BaseEnv&& base_env, stream_provider_t* stream_provider) noexcept {
-      return __env::__join(
-        __env::__with(stream_provider, get_stream_provider), static_cast<BaseEnv&&>(base_env));
+      return __join_env(
+        __env::__env_fn{[stream_provider](get_stream_provider_t) noexcept {
+          return stream_provider;
+        }},
+        (BaseEnv&&) base_env);
     }
 
     template <class BaseEnv>
-      requires __callable<get_stream_provider_t, const BaseEnv&>
-    __decay_t<BaseEnv> make_stream_env(BaseEnv&& base_env, stream_provider_t*) noexcept {
-      return static_cast<BaseEnv&&>(base_env);
+      requires std::is_invocable_v<get_stream_provider_t, const BaseEnv&>
+    BaseEnv make_stream_env(BaseEnv&& base_env, stream_provider_t*) noexcept {
+      return (BaseEnv&&) base_env;
     }
 
     template <class BaseEnv>
@@ -355,8 +347,11 @@ namespace nvexec {
 
     template <class BaseEnv>
     auto make_terminal_stream_env(BaseEnv&& base_env, stream_provider_t* stream_provider) noexcept {
-      return __env::__join(
-        __env::__with(stream_provider, get_stream_provider), static_cast<BaseEnv&&>(base_env));
+      return __join_env(
+        __env::__env_fn{[stream_provider](get_stream_provider_t) noexcept {
+          return stream_provider;
+        }},
+        (BaseEnv&&) base_env);
     }
     template <class BaseEnv>
     using terminal_stream_env = decltype(STDEXEC_STREAM_DETAIL_NS::make_terminal_stream_env(
@@ -369,12 +364,10 @@ namespace nvexec {
     template <class BaseEnv>
     using make_terminal_stream_env_t = terminal_stream_env<BaseEnv>;
 
-    template <class S, class E>
+    template <class S>
     concept stream_sender = //
-      sender_in<S, E> &&    //
-      STDEXEC_IS_BASE_OF(
-        stream_sender_base,
-        __decay_t<transform_sender_result_t<__late_domain_of_t<S, E>, S, E>>);
+      sender<S> &&          //
+      STDEXEC_IS_BASE_OF(stream_sender_base, __decay_t<S>);
 
     template <class R>
     concept stream_receiver = //
@@ -385,7 +378,7 @@ namespace nvexec {
 
     template <class EnvId, class Variant>
     struct stream_enqueue_receiver {
-      using Env = stdexec::__cvref_t<EnvId>;
+      using Env = stdexec::__t<EnvId>;
 
       class __t {
         Env* env_;
@@ -394,19 +387,21 @@ namespace nvexec {
         queue::producer_t producer_;
 
        public:
-        using receiver_concept = stdexec::receiver_t;
+        using is_receiver = void;
         using __id = stream_enqueue_receiver;
 
         template <__one_of<set_value_t, set_stopped_t> Tag, class... As>
-        STDEXEC_ATTRIBUTE((host, device))
-        friend void tag_invoke(Tag, __t&& self, As&&... as) noexcept {
+        STDEXEC_DETAIL_CUDACC_HOST_DEVICE //
+          friend void
+          tag_invoke(Tag, __t&& self, As&&... as) noexcept {
           self.variant_->template emplace<decayed_tuple<Tag, As...>>(Tag(), std::move(as)...);
           self.producer_(self.task_);
         }
 
-        template <class Error>
-        STDEXEC_ATTRIBUTE((host, device))
-        STDEXEC_MEMFN_DECL(void set_error)(this __t&& self, Error&& e) noexcept {
+        template <same_as<set_error_t> _Tag, class Error>
+        STDEXEC_DETAIL_CUDACC_HOST_DEVICE //
+          friend void
+          tag_invoke(_Tag, __t&& self, Error&& e) noexcept {
           if constexpr (__decays_to<Error, std::exception_ptr>) {
             // What is `exception_ptr` but death pending
             self.variant_->template emplace<decayed_tuple<set_error_t, cudaError_t>>(
@@ -418,7 +413,7 @@ namespace nvexec {
           self.producer_(self.task_);
         }
 
-        STDEXEC_MEMFN_DECL(auto get_env)(this const __t& self) noexcept -> const Env& {
+        friend const Env& tag_invoke(get_env_t, const __t& self) noexcept {
           return *self.env_;
         }
 
@@ -575,22 +570,21 @@ namespace nvexec {
         template <__decays_to<cudaError_t> Error>
         void propagate_completion_signal(set_error_t, Error&& status) noexcept {
           if constexpr (stream_receiver<outer_receiver_t>) {
-            set_error(static_cast<outer_receiver_t&&>(rcvr_), cudaError_t(status));
+            set_error((outer_receiver_t&&) rcvr_, (cudaError_t&&) status);
           } else {
             // pass a cudaError_t by value:
-            continuation_kernel<outer_receiver_t, Error><<<1, 1, 0, get_stream()>>>(
-              static_cast<outer_receiver_t&&>(rcvr_), set_error_t(), status);
+            continuation_kernel<outer_receiver_t, Error>
+              <<<1, 1, 0, get_stream()>>>((outer_receiver_t&&) rcvr_, set_error_t(), status);
           }
         }
 
         template <class Tag, class... As>
         void propagate_completion_signal(Tag, As&&... as) noexcept {
           if constexpr (stream_receiver<outer_receiver_t>) {
-            Tag()(static_cast<outer_receiver_t&&>(rcvr_), static_cast<As&&>(as)...);
+            Tag()((outer_receiver_t&&) rcvr_, (As&&) as...);
           } else {
             continuation_kernel<outer_receiver_t, As&&...> // by reference
-              <<<1, 1, 0, get_stream()>>>(
-                static_cast<outer_receiver_t&&>(rcvr_), Tag(), static_cast<As&&>(as)...);
+              <<<1, 1, 0, get_stream()>>>((outer_receiver_t&&) rcvr_, Tag(), (As&&) as...);
           }
         }
       };
@@ -608,12 +602,12 @@ namespace nvexec {
 
         operation_state_base_t<OuterReceiverId>& operation_state_;
 
-        template <__completion_tag Tag, class... As>
+        template < __completion_tag Tag, class... As >
         friend void tag_invoke(Tag, __t&& self, As&&... as) noexcept {
-          self.operation_state_.propagate_completion_signal(Tag(), static_cast<As&&>(as)...);
+          self.operation_state_.propagate_completion_signal(Tag(), (As&&) as...);
         }
 
-        STDEXEC_MEMFN_DECL(auto get_env)(this const __t& self) noexcept -> decltype(auto) {
+        friend decltype(auto) tag_invoke(get_env_t, const __t& self) noexcept {
           return self.operation_state_.make_env();
         }
       };
@@ -633,12 +627,12 @@ namespace nvexec {
 
         using task_t = continuation_task_t<inner_receiver_t, variant_t>;
         using stream_enqueue_receiver_t =
-          stdexec::__t<stream_enqueue_receiver<stdexec::__cvref_id<env_t>, variant_t>>;
+          stdexec::__t<stream_enqueue_receiver<stdexec::__id<env_t>, variant_t>>;
         using intermediate_receiver =
-          __if_c<stream_sender<sender_t, env_t>, inner_receiver_t, stream_enqueue_receiver_t>;
+          __if_c<stream_sender<sender_t>, inner_receiver_t, stream_enqueue_receiver_t>;
         using inner_op_state_t = connect_result_t<sender_t, intermediate_receiver>;
 
-        STDEXEC_MEMFN_DECL(void start)(this __t& op) noexcept {
+        friend void tag_invoke(start_t, __t& op) noexcept {
           op.started_.test_and_set(::cuda::std::memory_order::relaxed);
 
           if (op.stream_provider_.status_ != cudaSuccess) {
@@ -664,16 +658,15 @@ namespace nvexec {
         }
 
         template <__decays_to<outer_receiver_t> OutR, class ReceiverProvider>
-          requires stream_sender<sender_t, env_t>
+          requires stream_sender<sender_t>
         __t(
           sender_t&& sender,
           OutR&& out_receiver,
           ReceiverProvider receiver_provider,
           context_state_t context_state)
-          : base_t(static_cast<outer_receiver_t&&>(out_receiver), context_state)
-          , inner_op_{connect(
-              static_cast<sender_t&&>(sender),
-              receiver_provider(static_cast<base_t&>(*this)))} {
+          : base_t((outer_receiver_t&&) out_receiver, context_state)
+          , inner_op_{
+              connect((sender_t&&) sender, receiver_provider(static_cast<base_t&>(*this)))} {
         }
 
         template <__decays_to<outer_receiver_t> OutR, class ReceiverProvider>
@@ -682,7 +675,7 @@ namespace nvexec {
           OutR&& out_receiver,
           ReceiverProvider receiver_provider,
           context_state_t context_state)
-          : base_t(static_cast<outer_receiver_t&&>(out_receiver), context_state)
+          : base_t((outer_receiver_t&&) out_receiver, context_state)
           , storage_(
               make_host<variant_t>(this->stream_provider_.status_, context_state.pinned_resource_))
           , task_(make_host<task_t>(
@@ -698,7 +691,7 @@ namespace nvexec {
               context_state.pinned_resource_,
               this->make_env()))
           , inner_op_{connect(
-              static_cast<sender_t&&>(sender),
+              (sender_t&&) sender,
               stream_enqueue_receiver_t{
                 env_.get(),
                 storage_.get(),
@@ -751,8 +744,8 @@ namespace nvexec {
       exit_op_state(Sender&& sndr, OuterReceiver&& rcvr, context_state_t context_state) noexcept {
       using ReceiverId = stdexec::__id<OuterReceiver>;
       return exit_operation_state_t<Sender, OuterReceiver>(
-        static_cast<Sender&&>(sndr),
-        static_cast<OuterReceiver&&>(rcvr),
+        (Sender&&) sndr,
+        (OuterReceiver&&) rcvr,
         [](operation_state_base_t<ReceiverId>& op)
           -> stdexec::__t<propagate_receiver_t<ReceiverId>> {
           return stdexec::__t<propagate_receiver_t<ReceiverId>>{{}, op};
@@ -778,7 +771,7 @@ namespace nvexec {
 
     template <class InnerReceiverProvider, class OuterReceiver>
     using inner_receiver_t = //
-      __call_result_t<InnerReceiverProvider, operation_state_base_t<stdexec::__id<OuterReceiver>>&>;
+      __call_result_t< InnerReceiverProvider, operation_state_base_t<stdexec::__id<OuterReceiver>>&>;
 
     template <class CvrefSender, class InnerReceiver, class OuterReceiver>
     using stream_op_state_t = //
@@ -800,14 +793,11 @@ namespace nvexec {
         Sender,
         inner_receiver_t<ReceiverProvider, OuterReceiver>,
         OuterReceiver>(
-        static_cast<Sender&&>(sndr),
-        static_cast<OuterReceiver&&>(out_receiver),
-        receiver_provider,
-        context_state);
+        (Sender&&) sndr, (OuterReceiver&&) out_receiver, receiver_provider, context_state);
     }
 
     template <class Sender, class OuterReceiver, class ReceiverProvider>
-    stream_op_state_t<Sender, inner_receiver_t<ReceiverProvider, OuterReceiver>, OuterReceiver>
+    stream_op_state_t< Sender, inner_receiver_t<ReceiverProvider, OuterReceiver>, OuterReceiver>
       stream_op_state(
         Sender&& sndr,
         OuterReceiver&& out_receiver,
@@ -817,12 +807,9 @@ namespace nvexec {
         Sender,
         inner_receiver_t<ReceiverProvider, OuterReceiver>,
         OuterReceiver>(
-        static_cast<Sender&&>(sndr),
-        static_cast<OuterReceiver&&>(out_receiver),
-        receiver_provider,
-        context_state);
+        (Sender&&) sndr, (OuterReceiver&&) out_receiver, receiver_provider, context_state);
     }
-  } // namespace STDEXEC_STREAM_DETAIL_NS
+  }
 
   inline constexpr STDEXEC_STREAM_DETAIL_NS::get_stream_t get_stream{};
-} // namespace nvexec
+}

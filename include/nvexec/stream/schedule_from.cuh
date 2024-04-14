@@ -28,7 +28,7 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
     template <class Tag, class Storage, class... As>
     __launch_bounds__(1) __global__ void kernel(Storage* storage, As... as) {
       ::new (storage) Storage();
-      storage->template emplace<decayed_tuple<Tag, As...>>(Tag(), static_cast<As&&>(as)...);
+      storage->template emplace<decayed_tuple<Tag, As...>>(Tag(), (As&&) as...);
     }
 
     template <class CvrefSenderId, class ReceiverId>
@@ -45,7 +45,7 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
 
         operation_state_base_t<ReceiverId>& operation_state_;
 
-        template <__completion_tag Tag, class... As>
+        template < __completion_tag Tag, class... As>
         friend void tag_invoke(Tag, __t&& self, As&&... as) noexcept {
           using tuple_t = decayed_tuple<Tag, As...>;
 
@@ -64,7 +64,7 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
 
             if constexpr (!construct_on_device) {
               ::new (storage) storage_t();
-              storage->template emplace<tuple_t>(Tag(), static_cast<As&&>(as)...);
+              storage->template emplace<tuple_t>(Tag(), (As&&) as...);
             }
 
             int dev_id{};
@@ -124,7 +124,7 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
           }
         }
 
-        STDEXEC_MEMFN_DECL(auto get_env)(this const __t& self) noexcept -> Env {
+        friend Env tag_invoke(get_env_t, const __t& self) noexcept {
           return self.operation_state_.make_env();
         }
       };
@@ -133,20 +133,20 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
     template <class Sender>
     struct source_sender_t : stream_sender_base {
       template <__decays_to<source_sender_t> Self, receiver Receiver>
-      STDEXEC_MEMFN_DECL(auto connect)(this Self&& self, Receiver rcvr)
+      friend auto tag_invoke(connect_t, Self&& self, Receiver rcvr)
         -> connect_result_t<__copy_cvref_t<Self, Sender>, Receiver> {
-        return connect((static_cast<Self&&>(self)).sndr_, static_cast<Receiver&&>(rcvr));
+        return connect(((Self&&) self).sndr_, (Receiver&&) rcvr);
       }
 
-      STDEXEC_MEMFN_DECL(auto get_env)(this const source_sender_t& self) noexcept
+      friend auto tag_invoke(get_env_t, const source_sender_t& self) noexcept
         -> env_of_t<const Sender&> {
         // TODO - this code is not exercised by any test
         return get_env(self.sndr_);
       }
 
       template <__decays_to<source_sender_t> _Self, class _Env>
-      STDEXEC_MEMFN_DECL(auto get_completion_signatures)(this _Self&&, _Env&&)
-        -> __try_make_completion_signatures<__copy_cvref_t<_Self, Sender>, _Env> {
+      friend auto tag_invoke(get_completion_signatures_t, _Self&&, _Env&&)
+        -> __try_make_completion_signatures< __copy_cvref_t<_Self, Sender>, _Env> {
         return {};
       }
 
@@ -160,7 +160,7 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
     template <class _Ty>
     using error_completions_t = //
       completion_signatures<set_error_t(__decay_t<_Ty>&&)>;
-  } // namespace _sched_from
+  }
 
   template <class Scheduler, class SenderId>
   struct schedule_from_sender_t {
@@ -170,8 +170,8 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
     struct __env {
       context_state_t context_state_;
 
-      template <__one_of<set_value_t, set_stopped_t, set_error_t> _Tag>
-      STDEXEC_MEMFN_DECL(Scheduler query)(this const __env& __self, get_completion_scheduler_t<_Tag>) noexcept {
+      template < __one_of<set_value_t, set_stopped_t, set_error_t> _Tag>
+      friend Scheduler tag_invoke(get_completion_scheduler_t<_Tag>, const __env& __self) noexcept {
         return {__self.context_state_};
       }
     };
@@ -183,18 +183,17 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
 
       template <class Self, class Receiver>
       using receiver_t = //
-        stdexec::__t<_sched_from::receiver_t<__cvref_id<Self, Sender>, stdexec::__id<Receiver>>>;
+        stdexec::__t< _sched_from::receiver_t< __cvref_id<Self, Sender>, stdexec::__id<Receiver>>>;
 
       template <__decays_to<__t> Self, receiver Receiver>
         requires sender_to<__copy_cvref_t<Self, source_sender_th>, Receiver>
-      STDEXEC_MEMFN_DECL(auto connect)(this Self&& self, Receiver rcvr) //
- -> stream_op_state_t<
+      friend auto tag_invoke(connect_t, Self&& self, Receiver rcvr) -> stream_op_state_t<
         __copy_cvref_t<Self, source_sender_th>,
         receiver_t<Self, Receiver>,
         Receiver> {
         return stream_op_state<__copy_cvref_t<Self, source_sender_th>>(
-          static_cast<Self&&>(self).sndr_,
-          static_cast<Receiver&&>(rcvr),
+          ((Self&&) self).sndr_,
+          (Receiver&&) rcvr,
           [&](operation_state_base_t<stdexec::__id<Receiver>>& stream_provider)
             -> receiver_t<Self, Receiver> {
             return receiver_t<Self, Receiver>{{}, stream_provider};
@@ -202,12 +201,12 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
           self.env_.context_state_);
       }
 
-      STDEXEC_MEMFN_DECL(auto get_env)(this const __t& __self) noexcept -> const __env& {
+      friend const __env& tag_invoke(get_env_t, const __t& __self) noexcept {
         return __self.env_;
       }
 
       template <__decays_to<__t> _Self, class _Env>
-      STDEXEC_MEMFN_DECL(auto get_completion_signatures)(this _Self&&, _Env&&)
+      friend auto tag_invoke(get_completion_signatures_t, _Self&&, _Env&&)
         -> __try_make_completion_signatures<
           __copy_cvref_t<_Self, Sender>,
           _Env,
@@ -219,15 +218,8 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS {
 
       __t(context_state_t context_state, Sender sndr)
         : env_{context_state}
-        , sndr_{{}, static_cast<Sender&&>(sndr)} {
+        , sndr_{{}, (Sender&&) sndr} {
       }
     };
   };
-} // namespace nvexec::STDEXEC_STREAM_DETAIL_NS
-
-namespace stdexec::__detail {
-  template <class _Scheduler, class _SenderId>
-  extern __mconst<
-    nvexec::STDEXEC_STREAM_DETAIL_NS::schedule_from_sender_t<_Scheduler, __name_of<__t<_SenderId>>>>
-    __name_of_v<nvexec::STDEXEC_STREAM_DETAIL_NS::schedule_from_sender_t<_Scheduler, _SenderId>>;
-} // namespace stdexec::__detail
+}

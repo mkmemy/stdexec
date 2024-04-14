@@ -150,7 +150,7 @@ http_response to_response(classification_result res) {
 }
 
 // Handler for the "classify" request type
-ex::sender auto handle_classify_request(const http_request& req) {
+auto handle_classify_request(const http_request& req) {
   return
     // start with the input buffer
     ex::just(req)
@@ -190,10 +190,10 @@ int main() {
     http_request req{"/classify", {}, body};
 
     // The handler for the "classify" requests
-    ex::sender auto snd = handle_classify_request(req);
+    auto snd = handle_classify_request(req);
 
     // Pack this into a simplified flow and execute it asynchronously
-    ex::sender auto action =
+    auto action =
       std::move(snd) //
       | ex::then([](http_response resp) {
           std::ostringstream oss;

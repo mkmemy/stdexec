@@ -39,7 +39,7 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS::__algo_range_init_fun {
 
       template <class... Range>
       struct result_size_for {
-        using __t = __msize_t<sizeof(typename DerivedReceiver::template result_t<Range...>)>;
+        using __t = __msize_t< sizeof(typename DerivedReceiver::template result_t<Range...>)>;
       };
 
       template <class... Sizes>
@@ -52,7 +52,7 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS::__algo_range_init_fun {
         using result_size_for_t = stdexec::__t<result_size_for<_As...>>;
 
         static constexpr ::std::size_t value = //
-          __v<__gather_completions_for<
+          __v< __gather_completions_for<
             set_value_t,
             Sender,
             env_of_t<Receiver>,
@@ -61,32 +61,32 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS::__algo_range_init_fun {
       };
 
       operation_state_base_t<ReceiverId>& op_state_;
-      STDEXEC_ATTRIBUTE((no_unique_address)) InitT init_;
-      STDEXEC_ATTRIBUTE((no_unique_address)) Fun fun_;
+      STDEXEC_NO_UNIQUE_ADDRESS InitT init_;
+      STDEXEC_NO_UNIQUE_ADDRESS Fun fun_;
 
      public:
       using __id = receiver_t;
 
       constexpr static ::std::size_t memory_allocation_size = max_result_size::value;
 
-      template <class Range>
-      STDEXEC_MEMFN_DECL(void set_value)(this __t&& self, Range&& range) noexcept {
-        DerivedReceiver::set_value_impl(static_cast<__t&&>(self), static_cast<Range&&>(range));
+      template <same_as<set_value_t> _Tag, class Range>
+      friend void tag_invoke(_Tag, __t&& self, Range&& range) noexcept {
+        DerivedReceiver::set_value_impl((__t&&) self, (Range&&) range);
       }
 
       template <__one_of<set_error_t, set_stopped_t> Tag, class... As>
       friend void tag_invoke(Tag, __t&& self, As&&... as) noexcept {
-        self.op_state_.propagate_completion_signal(Tag(), static_cast<As&&>(as)...);
+        self.op_state_.propagate_completion_signal(Tag(), (As&&) as...);
       }
 
-      STDEXEC_MEMFN_DECL(auto get_env)(this const __t& self) noexcept -> env_of_t<Receiver> {
+      friend env_of_t<Receiver> tag_invoke(get_env_t, const __t& self) noexcept {
         return get_env(self.op_state_.rcvr_);
       }
 
       __t(InitT init, Fun fun, operation_state_base_t<ReceiverId>& op_state)
         : op_state_(op_state)
-        , init_(static_cast<InitT&&>(init))
-        , fun_(static_cast<Fun&&>(fun)) {
+        , init_((InitT&&) init)
+        , fun_((Fun&&) fun) {
       }
     };
   };
@@ -104,8 +104,8 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS::__algo_range_init_fun {
       using _set_value_t = typename DerivedSender::template _set_value_t<Range>;
 
       Sender sndr_;
-      STDEXEC_ATTRIBUTE((no_unique_address)) InitT init_;
-      STDEXEC_ATTRIBUTE((no_unique_address)) Fun fun_;
+      STDEXEC_NO_UNIQUE_ADDRESS InitT init_;
+      STDEXEC_NO_UNIQUE_ADDRESS Fun fun_;
 
       template <class Self, class Env>
       using completion_signatures = //
@@ -113,15 +113,15 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS::__algo_range_init_fun {
           __copy_cvref_t<Self, Sender>,
           Env,
           completion_signatures<set_error_t(cudaError_t)>,
-          __q<_set_value_t>>;
+          __q<_set_value_t >>;
 
       template <__decays_to<__t> Self, receiver Receiver>
         requires receiver_of<Receiver, completion_signatures<Self, env_of_t<Receiver>>>
-      STDEXEC_MEMFN_DECL(auto connect)(this Self&& self, Receiver rcvr)
-        -> stream_op_state_t<__copy_cvref_t<Self, Sender>, receiver_t<Receiver>, Receiver> {
+      friend auto tag_invoke(connect_t, Self&& self, Receiver rcvr)
+        -> stream_op_state_t< __copy_cvref_t<Self, Sender>, receiver_t<Receiver>, Receiver> {
         return stream_op_state<__copy_cvref_t<Self, Sender>>(
-          static_cast<Self&&>(self).sndr_,
-          static_cast<Receiver&&>(rcvr),
+          ((Self&&) self).sndr_,
+          (Receiver&&) rcvr,
           [&](operation_state_base_t<stdexec::__id<Receiver>>& stream_provider)
             -> receiver_t<Receiver> {
             return receiver_t<Receiver>(self.init_, self.fun_, stream_provider);
@@ -129,14 +129,14 @@ namespace nvexec::STDEXEC_STREAM_DETAIL_NS::__algo_range_init_fun {
       }
 
       template <__decays_to<__t> Self, class Env>
-      STDEXEC_MEMFN_DECL(auto get_completion_signatures)(this Self&&, Env&&)
+      friend auto tag_invoke(get_completion_signatures_t, Self&&, Env&&)
         -> completion_signatures<Self, Env> {
         return {};
       }
 
-      STDEXEC_MEMFN_DECL(auto get_env)(this const __t& self) noexcept -> env_of_t<const Sender&> {
+      friend auto tag_invoke(get_env_t, const __t& self) noexcept -> env_of_t<const Sender&> {
         return get_env(self.sndr_);
       }
     };
   };
-} // namespace nvexec::STDEXEC_STREAM_DETAIL_NS::__algo_range_init_fun
+}

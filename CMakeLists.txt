@@ -12,7 +12,7 @@ endif()
 
 # Fetch rapids-cmake
 if(NOT EXISTS ${CMAKE_BINARY_DIR}/RAPIDS.cmake)
-  file(DOWNLOAD https://raw.githubusercontent.com/rapidsai/rapids-cmake/branch-24.02/RAPIDS.cmake
+  file(DOWNLOAD https://raw.githubusercontent.com/rapidsai/rapids-cmake/branch-23.02/RAPIDS.cmake
        ${CMAKE_BINARY_DIR}/RAPIDS.cmake)
 endif()
 # Initialize rapids-cmake
@@ -41,7 +41,13 @@ string(REGEX REPLACE "Revision: ([0-9]+)" "\\1" STD_EXECUTION_BS_REVISION ${STD_
 # call so CMake's CXX compiler detection doesn't throw attempting to use it
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules/CompilerHelpers.cmake)
 
+disable_compiler_launcher(LANG CXX VAR _cxx_launcher)
+disable_compiler_launcher(LANG CUDA VAR _cuda_launcher)
+
 project(STDEXEC VERSION "0.${STD_EXECUTION_BS_REVISION}.0" LANGUAGES CXX)
+
+enable_compiler_launcher(LANG CXX VAR _cxx_launcher)
+enable_compiler_launcher(LANG CUDA VAR _cuda_launcher)
 
 # Print CMake configuration
 message(STATUS "System           : ${CMAKE_SYSTEM}")
@@ -69,8 +75,6 @@ rapids_cmake_write_version_file(include/stdexec_version_config.hpp)
 # Set CMAKE_BUILD_TYPE=Release the default if none provided
 rapids_cmake_build_type(Release)
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules")
-
 ##############################################################################
 # - Dependencies -------------------------------------------------------------
 
@@ -88,18 +92,6 @@ rapids_cpm_find(Catch2 ${Catch2_VERSION}
     URL https://github.com/catchorg/Catch2/archive/refs/tags/v${Catch2_VERSION}.zip
 )
 
-# Add ICM
-set(icm_VERSION 1.5.0)
-# Always download it, don't attempt to do `find_package(ICM)` first
-set(CPM_DOWNLOAD_icm TRUE)
-rapids_cpm_find(icm ${icm_VERSION}
-  CPM_ARGS
-    GITHUB_REPOSITORY iboB/icm
-    GIT_TAG v${icm_VERSION}
-    VERSION ${icm_VERSION}
-    PATCH_COMMAND git restore -- . && git apply ${CMAKE_CURRENT_LIST_DIR}/cmake/cpm/patches/icm/regex-build-error.diff
-)
-
 # Ensure that we link with the threading library
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 rapids_find_package(Threads REQUIRED
@@ -109,13 +101,6 @@ rapids_find_package(Threads REQUIRED
 
 ##############################################################################
 # - Main library targets -----------------------------------------------------
-
-# Detect the compiler frontend (GNU, Clang, MSVC, etc.)
-if(DEFINED CMAKE_CXX_COMPILER_FRONTEND_VARIANT)
-  set(stdexec_compiler_frontend ${CMAKE_CXX_COMPILER_FRONTEND_VARIANT})
-else()
-  set(stdexec_compiler_frontend ${CMAKE_CXX_COMPILER_ID})
-endif()
 
 set(stdexec_export_targets)
 
@@ -154,21 +139,9 @@ target_compile_options(stdexec INTERFACE
                        $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-fcoroutines>
                        )
 
-# Increase the concepts diagnostics depth for GCC
-target_compile_options(stdexec INTERFACE
-                       $<$<CXX_COMPILER_ID:GNU>:-fconcepts-diagnostics-depth=10>
-                       )
-
-# Do you want a preprocessor that works? Picky, picky.
 target_compile_options(stdexec INTERFACE
                        $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/Zc:__cplusplus /Zc:preprocessor>
                        )
-
-option(STDEXEC_ENABLE_EXTRA_TYPE_CHECKING "Enable extra type checking that is costly at compile-time" OFF)
-
-if (STDEXEC_ENABLE_EXTRA_TYPE_CHECKING)
-    target_compile_definitions(stdexec INTERFACE STDEXEC_ENABLE_EXTRA_TYPE_CHECKING)
-endif()
 
 add_library(STDEXEC::stdexec ALIAS stdexec)
 
@@ -180,28 +153,33 @@ add_library(stdexec_executable_flags INTERFACE)
 
 # Enable warnings
 target_compile_options(stdexec_executable_flags INTERFACE
-                       $<$<STREQUAL:${stdexec_compiler_frontend},GNU>:-Wall>
-                       $<$<STREQUAL:${stdexec_compiler_frontend},AppleClang>:-Wall>
-                       $<$<STREQUAL:${stdexec_compiler_frontend},MSVC>:/W4>)
+                       $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:
+                       -Wall>
+                       $<$<CXX_COMPILER_ID:MSVC>:
+                       /W4>)
 
 # Increase the error limit with NVC++
 target_compile_options(stdexec_executable_flags INTERFACE
-                       $<$<CXX_COMPILER_ID:NVHPC>:-e1000>)
+                       $<$<CXX_COMPILER_ID:NVHPC>:-e1000>
+                       )
 
-# Silence warnings
+# Silence warnings with GCC
 target_compile_options(stdexec_executable_flags INTERFACE
                        $<$<CXX_COMPILER_ID:GNU>:-Wno-non-template-friend>
+                       )
+
+# Silence warnings with NVHPC
+target_compile_options(stdexec_executable_flags INTERFACE
                        $<$<CXX_COMPILER_ID:NVHPC>:--diag_suppress177,550,111,497,554>
-                       $<$<CXX_COMPILER_ID:MSVC>:/wd4100 /wd4101 /wd4127 /wd4324 /wd4456 /wd4459>)
+                       )
 
 # Template backtrace limit
 target_compile_options(stdexec_executable_flags INTERFACE
                        $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:
-                          $<$<STREQUAL:${CMAKE_CXX_COMPILER_FRONTEND_VARIANT},MSVC>:/clang:>-ferror-limit=0
-                          $<$<STREQUAL:${CMAKE_CXX_COMPILER_FRONTEND_VARIANT},MSVC>:/clang:>-fmacro-backtrace-limit=0
-                          $<$<STREQUAL:${CMAKE_CXX_COMPILER_FRONTEND_VARIANT},MSVC>:/clang:>-ftemplate-backtrace-limit=0>
-                       $<$<AND:$<CXX_COMPILER_ID:NVHPC>,$<VERSION_GREATER:$<CXX_COMPILER_VERSION>,23.3.0>>:
-                       -ftemplate-backtrace-limit=0>)
+                       -ferror-limit=0
+                       -fmacro-backtrace-limit=0
+                       -ftemplate-backtrace-limit=0>
+                       )
 
 # # Always enable colored output
 # target_compile_options(stdexec_executable_flags INTERFACE
@@ -219,24 +197,14 @@ target_compile_options(stdexec_executable_flags INTERFACE
                        -include stdexec/__detail/__force_include.hpp>
                        )
 
-target_compile_definitions(
-  stdexec_executable_flags INTERFACE
-  $<$<NOT:$<AND:$<CXX_COMPILER_ID:NVHPC>,$<COMPILE_LANGUAGE:CXX>>>:STDEXEC_ENABLE_EXTRA_TYPE_CHECKING>)
-
-# Support target for examples and tests
-add_library(nvexec_executable_flags INTERFACE)
-
-target_compile_options(nvexec_executable_flags INTERFACE
-                       $<$<AND:$<CXX_COMPILER_ID:NVHPC>,$<COMPILE_LANGUAGE:CXX>>:-gpu=nomanaged>)
-target_link_options(nvexec_executable_flags INTERFACE
-                    $<$<AND:$<CXX_COMPILER_ID:NVHPC>,$<COMPILE_LANGUAGE:CXX>>:-gpu=nomanaged>)
-
 # Set up nvexec library
 option(STDEXEC_ENABLE_CUDA "Enable CUDA targets for non-nvc++ compilers" OFF)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "NVHPC")
     set(STDEXEC_ENABLE_CUDA ON)
     # Unset these if using nvc++
     disable_compiler(LANG CUDA)
+    disable_compiler_launcher(LANG CXX)
+    disable_compiler_launcher(LANG CUDA)
 endif()
 
 if(STDEXEC_ENABLE_CUDA)
@@ -250,9 +218,9 @@ if(STDEXEC_ENABLE_CUDA)
     target_link_libraries(nvexec INTERFACE STDEXEC::stdexec)
 
     target_compile_options(nvexec INTERFACE
-      $<$<AND:$<CXX_COMPILER_ID:NVHPC>,$<COMPILE_LANGUAGE:CXX>>:-stdpar -gpu=cc${CMAKE_CUDA_ARCHITECTURES}>)
+      $<$<AND:$<CXX_COMPILER_ID:NVHPC>,$<COMPILE_LANGUAGE:CXX>>:-stdpar -gpu=nomanaged -gpu=cc${CMAKE_CUDA_ARCHITECTURES}>)
     target_link_options(nvexec INTERFACE
-      $<$<AND:$<CXX_COMPILER_ID:NVHPC>,$<COMPILE_LANGUAGE:CXX>>:-stdpar -gpu=cc${CMAKE_CUDA_ARCHITECTURES}>)
+      $<$<AND:$<CXX_COMPILER_ID:NVHPC>,$<COMPILE_LANGUAGE:CXX>>:-stdpar -gpu=nomanaged -gpu=cc${CMAKE_CUDA_ARCHITECTURES}>)
 
     if(NOT (CMAKE_CXX_COMPILER_ID STREQUAL "NVHPC"))
         include(rapids-cuda)
@@ -280,12 +248,12 @@ if(STDEXEC_ENABLE_CUDA)
 
         target_link_libraries(nvexec INTERFACE CUDA::cudart)
 
-        include(${rapids-cmake-dir}/cpm/cccl.cmake)
-        rapids_cpm_cccl(
+        include(${rapids-cmake-dir}/cpm/libcudacxx.cmake)
+        rapids_cpm_libcudacxx(
             BUILD_EXPORT_SET stdexec-exports
             INSTALL_EXPORT_SET stdexec-exports)
 
-        target_link_libraries(stdexec INTERFACE CCCL::CCCL)
+        target_link_libraries(stdexec INTERFACE libcudacxx::libcudacxx)
     endif ()
 endif ()
 
@@ -310,64 +278,10 @@ if (STDEXEC_ENABLE_TBB)
         STDEXEC::stdexec
         TBB::tbb
         )
-endif()
+endif ()
 
-include(CheckIncludeFileCXX)
-if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-  CHECK_INCLUDE_FILE_CXX("dispatch/dispatch.h" STDEXEC_FOUND_LIBDISPATCH)
-  option(STDEXEC_ENABLE_LIBDISPATCH "Enable the tests for the Grand Central Dispatch scheduler" ${STDEXEC_FOUND_LIBDISPATCH})
-endif()
+option (STDEXEC_ENABLE_IO_URING_TESTS "Enable io_uring tests" ON)
 
-option (STDEXEC_ENABLE_NUMA "Enable NUMA affinity for static_thread_pool" OFF)
-if (STDEXEC_ENABLE_NUMA)
-  find_package(numa REQUIRED)
-  target_link_libraries(stdexec INTERFACE numa::numa)
-  target_compile_definitions(stdexec INTERFACE STDEXEC_ENABLE_NUMA)
-endif()
-
-set(SYSTEM_CONTEXT_SOURCES src/system_context/system_context.cpp)
-add_library(system_context STATIC ${SYSTEM_CONTEXT_SOURCES})
-target_include_directories(system_context PRIVATE
-                           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>
-                           $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-                           )
-target_compile_features(system_context PUBLIC cxx_std_20)
-set_target_properties(system_context PROPERTIES
-    CXX_STANDARD 20
-    CXX_STANDARD_REQUIRED ON
-    CXX_EXTENSIONS OFF)
-target_compile_options(system_context PUBLIC
-    $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/Zc:__cplusplus /Zc:preprocessor>
-    )
-add_library(STDEXEC::system_context ALIAS system_context)
-
-
-
-if(CMAKE_CROSSCOMPILING)
-  CHECK_INCLUDE_FILE_CXX("linux/io_uring.h" STDEXEC_FOUND_IO_URING)
-else()
-  include(CheckCXXSourceRuns)
-  CHECK_CXX_SOURCE_RUNS(
-    "
-    #include <linux/io_uring.h>
-    #include <sys/syscall.h>
-    #include <unistd.h>
-
-    #include <cstdlib>
-
-    int main()
-    {
-      io_uring_params a = {};
-      return syscall(__NR_io_uring_setup, 1, &a) != -1
-        ? EXIT_SUCCESS
-        : EXIT_FAILURE;
-    }
-    "
-    STDEXEC_FOUND_IO_URING)
-endif()
-option(STDEXEC_ENABLE_IO_URING_TESTS "Enable io_uring tests" ${STDEXEC_FOUND_IO_URING})
-
-option(STDEXEC_BUILD_DOCS "Build stdexec documentation" OFF)
 option(STDEXEC_BUILD_EXAMPLES "Build stdexec examples" ON)
 option(STDEXEC_BUILD_TESTS "Build stdexec tests" ON)
 option(BUILD_TESTING "" ${STDEXEC_BUILD_TESTS})
@@ -378,11 +292,6 @@ if ((CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME) OR STDEXEC_BUILD_TESTS)
     # CTest automatically calls enable_testing() if BUILD_TESTING is ON
     # https://cmake.org/cmake/help/latest/module/CTest.html#module:CTest
     include(CTest)
-endif()
-
-# Configure documentation
-if(STDEXEC_BUILD_DOCS)
-    add_subdirectory(docs)
 endif()
 
 # Configure test executables

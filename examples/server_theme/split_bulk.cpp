@@ -122,12 +122,12 @@ image apply_blur(const image& img) {
   return {"blur / " + img.image_data_};
 }
 
-ex::sender auto handle_edge_detection_request(const http_request& req) {
+auto handle_edge_detection_request(const http_request& req) {
   // extract the input image from the request
-  ex::sender auto in_img_sender = ex::just(req) | ex::then(extract_image);
+  auto in_img_sender = ex::just(req) | ex::then(extract_image);
 
   // Prepare for using multiple parallel flows on the same input sender
-  // ex::sender auto multi_shot_img = ex::split(in_img_sender);
+  // auto multi_shot_img = ex::split(in_img_sender);
   auto& multi_shot_img = in_img_sender;
 
   // Apply the three methods of edge detection on the same input image, in parallel.
@@ -143,7 +143,7 @@ ex::sender auto handle_edge_detection_request(const http_request& req) {
   // error and cancellation handling is performed outside
 }
 
-ex::sender auto handle_multi_blur_request(const http_request& req) {
+auto handle_multi_blur_request(const http_request& req) {
   return
     // extract the input images from the request
     ex::just(req)
@@ -177,10 +177,10 @@ int main() {
     http_request req{"/edge_detect", {}, "scene"};
 
     // The handler for the /edge_detect requests
-    ex::sender auto snd = handle_edge_detection_request(req);
+    auto snd = handle_edge_detection_request(req);
 
     // Pack this into a simplified flow and execute it asynchronously
-    ex::sender auto action =
+    auto action =
       std::move(snd) //
       | ex::then([](http_response resp) {
           std::ostringstream oss;
@@ -196,10 +196,10 @@ int main() {
     http_request req{"/multi_blur", {}, "img1\nimg2\nimg3\nimg4\n"};
 
     // The handler for the /edge_detect requests
-    ex::sender auto snd = handle_multi_blur_request(req);
+    auto snd = handle_multi_blur_request(req);
 
     // Pack this into a simplified flow and execute it asynchronously
-    ex::sender auto action =
+    auto action =
       std::move(snd) //
       | ex::then([](http_response resp) {
           std::ostringstream oss;

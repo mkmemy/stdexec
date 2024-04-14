@@ -15,7 +15,6 @@
  */
 #pragma once
 
-#include "__config.hpp"
 #include "__meta.hpp"
 
 namespace stdexec {
@@ -25,15 +24,13 @@ namespace stdexec {
 
   template <class _Fn>
   struct __scope_guard<_Fn> {
-    STDEXEC_ATTRIBUTE((no_unique_address))
-    _Fn __fn_;
-    STDEXEC_ATTRIBUTE((no_unique_address))
-    __immovable __hidden_{};
+    STDEXEC_NO_UNIQUE_ADDRESS _Fn __fn_;
+    STDEXEC_NO_UNIQUE_ADDRESS __immovable __hidden_{};
     bool __dismissed_{false};
 
     ~__scope_guard() {
       if (!__dismissed_)
-        static_cast<_Fn&&>(__fn_)();
+        ((_Fn&&) __fn_)();
     }
 
     void __dismiss() noexcept {
@@ -43,12 +40,9 @@ namespace stdexec {
 
   template <class _Fn, class _T0>
   struct __scope_guard<_Fn, _T0> {
-    STDEXEC_ATTRIBUTE((no_unique_address))
-    _Fn __fn_;
-    STDEXEC_ATTRIBUTE((no_unique_address))
-    _T0 __t0_;
-    STDEXEC_ATTRIBUTE((no_unique_address))
-    __immovable __hidden_{};
+    STDEXEC_NO_UNIQUE_ADDRESS _Fn __fn_;
+    STDEXEC_NO_UNIQUE_ADDRESS _T0 __t0_;
+    STDEXEC_NO_UNIQUE_ADDRESS __immovable __hidden_{};
 
     bool __dismissed_{false};
 
@@ -58,20 +52,16 @@ namespace stdexec {
 
     ~__scope_guard() {
       if (!__dismissed_)
-        static_cast<_Fn&&>(__fn_)(static_cast<_T0&&>(__t0_));
+        ((_Fn&&) __fn_)((_T0&&) __t0_);
     }
   };
 
   template <class _Fn, class _T0, class _T1>
   struct __scope_guard<_Fn, _T0, _T1> {
-    STDEXEC_ATTRIBUTE((no_unique_address))
-    _Fn __fn_;
-    STDEXEC_ATTRIBUTE((no_unique_address))
-    _T0 __t0_;
-    STDEXEC_ATTRIBUTE((no_unique_address))
-    _T1 __t1_;
-    STDEXEC_ATTRIBUTE((no_unique_address))
-    __immovable __hidden_{};
+    STDEXEC_NO_UNIQUE_ADDRESS _Fn __fn_;
+    STDEXEC_NO_UNIQUE_ADDRESS _T0 __t0_;
+    STDEXEC_NO_UNIQUE_ADDRESS _T1 __t1_;
+    STDEXEC_NO_UNIQUE_ADDRESS __immovable __hidden_{};
 
     bool __dismissed_{false};
 
@@ -81,22 +71,17 @@ namespace stdexec {
 
     ~__scope_guard() {
       if (!__dismissed_)
-        static_cast<_Fn&&>(__fn_)(static_cast<_T0&&>(__t0_), static_cast<_T1&&>(__t1_));
+        ((_Fn&&) __fn_)((_T0&&) __t0_, (_T1&&) __t1_);
     }
   };
 
   template <class _Fn, class _T0, class _T1, class _T2>
   struct __scope_guard<_Fn, _T0, _T1, _T2> {
-    STDEXEC_ATTRIBUTE((no_unique_address))
-    _Fn __fn_;
-    STDEXEC_ATTRIBUTE((no_unique_address))
-    _T0 __t0_;
-    STDEXEC_ATTRIBUTE((no_unique_address))
-    _T1 __t1_;
-    STDEXEC_ATTRIBUTE((no_unique_address))
-    _T2 __t2_;
-    STDEXEC_ATTRIBUTE((no_unique_address))
-    __immovable __hidden_{};
+    STDEXEC_NO_UNIQUE_ADDRESS _Fn __fn_;
+    STDEXEC_NO_UNIQUE_ADDRESS _T0 __t0_;
+    STDEXEC_NO_UNIQUE_ADDRESS _T1 __t1_;
+    STDEXEC_NO_UNIQUE_ADDRESS _T2 __t2_;
+    STDEXEC_NO_UNIQUE_ADDRESS __immovable __hidden_{};
 
     bool __dismissed_{false};
 
@@ -106,8 +91,7 @@ namespace stdexec {
 
     ~__scope_guard() {
       if (!__dismissed_)
-        static_cast<_Fn&&>(__fn_)(
-          static_cast<_T0&&>(__t0_), static_cast<_T1&&>(__t1_), static_cast<_T2&&>(__t2_));
+        ((_Fn&&) __fn_)((_T0&&) __t0_, (_T1&&) __t1_, (_T2&&) __t2_);
     }
   };
 
